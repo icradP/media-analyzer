@@ -1,0 +1,1727 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frame Analysis Demo</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b0f17;
+      --panel: #141b26;
+      --muted: #97a3b6;
+      --text: #e6edf7;
+      --accent: #5da8ff;
+      --border: #263041;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    .muted { color: var(--muted); }
+    .toolbar, .subbar {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;
+    }
+    input, button, select {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: var(--panel);
+      color: var(--text);
+    }
+    button { cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .layout {
+      display: grid;
+      grid-template-columns: 480px 1fr;
+      gap: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 80px;
+    }
+    .title {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--accent);
+    }
+    .status { min-height: 20px; margin-bottom: 10px; color: var(--muted); }
+    .frame-list {
+      max-height: 70vh;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #1e2634; padding: 5px 6px; text-align: left; }
+    th { position: sticky; top: 0; background: #111a28; z-index: 1; }
+    tr.selected { background: #20324b; }
+    tr.playing { box-shadow: inset 3px 0 0 #ffd166; }
+    tr.decode-error { background: rgba(255, 82, 82, 0.12); box-shadow: inset 3px 0 0 #ff5252; }
+    tr.decode-error td { color: #ffb3b3; }
+    .right-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    #videoCanvas { width: 100%; max-height: 280px; background: #000; border: 1px solid var(--border); }
+    .hex-wrap { overflow: auto; max-height: 44vh; border: 1px solid var(--border); border-radius: 8px; }
+    .hex-row { display: grid; grid-template-columns: 90px 1fr 220px; gap: 8px; padding: 2px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .hex-row:nth-child(odd) { background: rgba(255,255,255,0.02); }
+    .hex-off { color: var(--muted); }
+    .hex-bytes { white-space: pre; }
+    .hex-b { cursor: pointer; border-radius: 3px; padding: 0 1px; }
+    .hex-b:hover { background: rgba(93,168,255,0.2); }
+    .hex-ascii { color: #b8d1ff; }
+    .hi { color: #ffd166; font-weight: 700; }
+    .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 8px; font-size: 12px; }
+    .k { color: var(--muted); }
+    .tree-wrap {
+      margin-top: 8px;
+      max-height: 28vh;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f1622;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 6px 8px;
+    }
+    .tree-wrap details { margin: 2px 0; }
+    .tree-wrap summary { cursor: pointer; color: #d3e6ff; }
+    .tree-wrap .tree-line { padding: 2px 0 2px 14px; color: #b8d1ff; }
+    .tree-wrap .tree-key { color: var(--muted); margin-right: 6px; }
+    .field-item {
+      padding: 4px 8px;
+      border-bottom: 1px solid #1e2634;
+      cursor: pointer;
+      color: #b8d1ff;
+    }
+    .field-item:hover { background: rgba(93,168,255,0.2); }
+    .field-item.active { background: rgba(93,168,255,0.35); color: #fff; }
+    .field-empty { padding: 8px; color: var(--muted); }
+    .stats-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .stats-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 8px;
+      background: #101726;
+    }
+    .stats-item .k { color: var(--muted); display: block; margin-bottom: 2px; }
+    .chart-block { margin-top: 8px; }
+    .chart-title { font-size: 12px; color: #c8dcff; margin-bottom: 4px; }
+    .chart-canvas {
+      width: 100%;
+      height: 140px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f1622;
+    }
+    .failure-tools { display: flex; gap: 8px; margin-bottom: 6px; }
+    .failure-text {
+      width: 100%;
+      min-height: 140px;
+      resize: vertical;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: #0f1622;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      white-space: pre;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Frame Analysis Example</h1>
+    <div class="muted">逐帧分析 + HexDataView + 单帧音频播放 + 视频帧浏览器解码(canvas)。</div>
+    <div class="toolbar">
+      <input id="file" type="file" />
+      <button id="analyze">Analyze</button>
+      <button id="decodeVideo">Decode Video Frame</button>
+      <button id="playAudio">Play Audio Frame</button>
+      <label>Seg PTS(s)</label>
+      <input id="segStart" type="number" step="0.001" placeholder="start" style="width:120px" />
+      <input id="segEnd" type="number" step="0.001" placeholder="end" style="width:120px" />
+      <button id="setSegStart">Set Start=Selected</button>
+      <button id="setSegEnd">Set End=Selected</button>
+      <button id="playSegVideo">Play Video Segment</button>
+      <button id="playSegAudio">Play Audio Segment</button>
+      <button id="stopSeg">Stop Segment</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="subbar">
+      <label>Filter</label>
+      <select id="mediaFilter">
+        <option value="all">all</option>
+        <option value="video">video</option>
+        <option value="audio">audio</option>
+      </select>
+      <label>Order</label>
+      <select id="orderMode">
+        <option value="offset">文件地址顺序</option>
+        <option value="time">时间顺序</option>
+      </select>
+      <span id="count" class="muted">frames: 0</span>
+    </div>
+    <div id="status" class="status">Ready.</div>
+
+    <div class="layout">
+      <section class="card">
+        <h2 class="title">Frames</h2>
+        <div class="frame-list">
+          <table>
+            <thead>
+              <tr>
+                <th>Addr#</th><th>Idx</th><th>Offset</th><th>Type</th><th>PTS</th><th>DTS</th><th>PTS(s)</th><th>DTS(s)</th><th>PTS(HMS)</th><th>DTS(HMS)</th><th>Size</th><th>Pic</th><th>Codec</th>
+              </tr>
+            </thead>
+            <tbody id="framesBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="right-grid">
+        <section class="card">
+          <h2 class="title">Selected Frame</h2>
+          <div id="selectedInfo" class="kv"></div>
+          <div id="selectedTree" class="tree-wrap"><div class="field-empty">No details.</div></div>
+        </section>
+        <section class="card">
+          <h2 class="title">Playback Canvas (Video Decode / Audio Waveform)</h2>
+          <canvas id="videoCanvas"></canvas>
+        </section>
+        <section class="card">
+          <h2 class="title">HexDataView</h2>
+          <div id="hexWrap" class="hex-wrap"></div>
+        </section>
+        <section class="card">
+          <h2 class="title">Stats Panel (Interval / Bitrate / A-V TS)</h2>
+          <div id="statsSummary" class="stats-summary"></div>
+          <div class="chart-block">
+            <div class="chart-title">Frame Interval (ms)</div>
+            <canvas id="intervalChart" class="chart-canvas"></canvas>
+          </div>
+          <div class="chart-block">
+            <div class="chart-title">Bitrate per Second (kbps)</div>
+            <canvas id="bitrateChart" class="chart-canvas"></canvas>
+          </div>
+          <div class="chart-block">
+            <div class="chart-title">A-V Timestamp Diff (videoTs - nearestAudioTs, ms)</div>
+            <canvas id="avSyncChart" class="chart-canvas"></canvas>
+          </div>
+        </section>
+        <section class="card">
+          <h2 class="title">Decode Failure Snapshot</h2>
+          <div class="failure-tools">
+            <button id="copyFailure">Copy Failure Text</button>
+            <button id="clearFailure">Clear Failure Text</button>
+          </div>
+          <textarea id="failureText" class="failure-text" readonly></textarea>
+        </section>
+      </section>
+    </div>
+  </div>
+
+  <script type="module">
+    import { analyzeByDetectedFormat } from "../lib/codec/analyzeByDetectedFormat.js";
+    import { getFrames, getFilteredFrames } from "../lib/codec/multiFormatFrameAdapter.js";
+    import {
+      parseAvcLengthPrefixedNalUnits,
+      parseHevcLengthPrefixedNalUnits,
+    } from "../lib/codec/index.js";
+    import {
+      computeHexBytesPerLine,
+      buildHexViewRows,
+      buildVideoDecodePlan,
+      buildAudioPlaybackBytes,
+      buildAudioPlaybackBytesForFrameRange,
+      buildFrameReferenceRelations,
+      decodeVideoFramesToCanvas,
+      playAudioFrameWithWebAudio,
+      sliceFrameBytes,
+      decodeVideoFrameWithStrategies as libDecodeVideoFrameWithStrategies,
+      decodeGopByMseFallback as libDecodeGopByMseFallback,
+      ensureTinyH264WorkerReady as libEnsureTinyH264WorkerReady,
+      releaseTinyH264Worker as libReleaseTinyH264Worker,
+    } from "../lib/browser/index.js";
+
+    const fileEl = document.getElementById("file");
+    const analyzeBtn = document.getElementById("analyze");
+    const decodeVideoBtn = document.getElementById("decodeVideo");
+    const playAudioBtn = document.getElementById("playAudio");
+    const segStartEl = document.getElementById("segStart");
+    const segEndEl = document.getElementById("segEnd");
+    const setSegStartBtn = document.getElementById("setSegStart");
+    const setSegEndBtn = document.getElementById("setSegEnd");
+    const playSegVideoBtn = document.getElementById("playSegVideo");
+    const playSegAudioBtn = document.getElementById("playSegAudio");
+    const stopSegBtn = document.getElementById("stopSeg");
+    const clearBtn = document.getElementById("clear");
+    const filterEl = document.getElementById("mediaFilter");
+    const orderModeEl = document.getElementById("orderMode");
+    const statusEl = document.getElementById("status");
+    const countEl = document.getElementById("count");
+    const framesBodyEl = document.getElementById("framesBody");
+    const selectedInfoEl = document.getElementById("selectedInfo");
+    const selectedTreeEl = document.getElementById("selectedTree");
+    const hexWrapEl = document.getElementById("hexWrap");
+    const statsSummaryEl = document.getElementById("statsSummary");
+    const intervalChartEl = document.getElementById("intervalChart");
+    const bitrateChartEl = document.getElementById("bitrateChart");
+    const avSyncChartEl = document.getElementById("avSyncChart");
+    const failureTextEl = document.getElementById("failureText");
+    const copyFailureBtn = document.getElementById("copyFailure");
+    const clearFailureBtn = document.getElementById("clearFailure");
+    const canvasEl = document.getElementById("videoCanvas");
+
+    let result = null;
+    let resultMap = null;
+    let currentFileBytes = null;
+    let allFrames = [];
+    let shownFrames = [];
+    let selectedIndex = -1;
+    let currentAudioCtx = null;
+    let currentHexBytes = null;
+    let currentHexBaseOffset = 0;
+    let currentFieldRows = [];
+    let activeFieldKey = null;
+    let segmentPlayToken = 0;
+    let activeSegmentAudioSources = [];
+    let activeSegmentAudioProgressTimer = null;
+    let activeAudioWaveformAnimId = 0;
+    let playingFrameIndex = null;
+    let tinyDecoderGopRange = null;
+    let decodeExceptionFrameIndexes = new Set();
+
+    function setStatus(text) { statusEl.textContent = text; }
+    function markDecodeException(frame, err, context = "decode") {
+      const idx = Number(frame?.index);
+      if (!Number.isFinite(idx)) return;
+      decodeExceptionFrameIndexes.add(idx);
+      renderFrames();
+      console.warn("[decode-exception] frame marked", {
+        context,
+        frameIndex: idx,
+        message: err?.message || String(err),
+      });
+    }
+    function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
+    function toHex2(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) return null;
+      return Math.max(0, Math.min(255, n)).toString(16).toUpperCase().padStart(2, "0");
+    }
+    function asU8(v) {
+      if (!v) return null;
+      if (v instanceof Uint8Array) return v;
+      if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+      if (v instanceof ArrayBuffer) return new Uint8Array(v);
+      if (Array.isArray(v)) return Uint8Array.from(v);
+      return null;
+    }
+    function avcCodecFromSps(vStream) {
+      const sps0 = asU8(vStream?.decoderConfig?.sps?.[0]);
+      if (!(sps0 instanceof Uint8Array) || sps0.length < 4) return null;
+      // SPS RBSP starts with NAL header (0x67), then profile_idc / constraint_set flags / level_idc.
+      const profileIdc = toHex2(sps0[1]);
+      const profileCompat = toHex2(sps0[2]);
+      const levelIdc = toHex2(sps0[3]);
+      if (!profileIdc || !profileCompat || !levelIdc) return null;
+      return `avc1.${profileIdc}${profileCompat}${levelIdc}`;
+    }
+    function codecCandidatesForStream(vStream) {
+      const name = String(vStream?.codecName || "").toLowerCase();
+      const cands = [];
+      const push = (x) => { if (x && !cands.includes(x)) cands.push(x); };
+      const profileHex = toHex2(vStream?.profile);
+      const levelHex = toHex2(vStream?.level);
+
+      if (name.includes("264") || name.includes("avc") || name === "avc1" || name === "avc3") {
+        push(avcCodecFromSps(vStream));
+        if (profileHex && levelHex) {
+          push(`avc1.${profileHex}00${levelHex}`);
+          push(`avc1.${profileHex}${levelHex}`);
+        }
+        push("avc1.64001F");
+        push("avc1.4D401F");
+        push("avc1.42001E");
+      }
+      if (name.includes("265") || name.includes("hevc") || name === "hvc1" || name === "hev1") {
+        push("hvc1.1.6.L93.B0");
+        push("hev1.1.6.L93.B0");
+        push("hvc1.1.6.L120.B0");
+        push("hev1.1.6.L120.B0");
+      }
+      return cands;
+    }
+    async function resolveVideoDecoderCodec(vStream) {
+      const cands = codecCandidatesForStream(vStream);
+      if (cands.length === 0) return null;
+      if (typeof VideoDecoder === "undefined" || typeof VideoDecoder.isConfigSupported !== "function") {
+        return cands[0];
+      }
+      for (const codec of cands) {
+        try {
+          const check = await VideoDecoder.isConfigSupported({ codec });
+          if (check?.supported) return codec;
+        } catch {
+          // try next candidate
+        }
+      }
+      return cands[0];
+    }
+    function codecRetryCandidates(codecString) {
+      const out = [];
+      const push = (v) => { if (v && !out.includes(v)) out.push(v); };
+      const s = String(codecString || "");
+      push(s);
+      if (s.startsWith("avc1.")) push(`avc3.${s.slice(5)}`);
+      if (s.startsWith("avc3.")) push(`avc1.${s.slice(5)}`);
+      if (s === "avc1" || s === "avc3") {
+        push("avc1.42C029");
+        push("avc3.42C029");
+      }
+      return out;
+    }
+    function findGopRangeByFrame(targetFrame) {
+      const vids = (allFrames || [])
+        .filter((f) => f._mediaType === "video")
+        .sort((a, b) => (Number(a.index) || 0) - (Number(b.index) || 0));
+      const pos = vids.findIndex((f) => f.index === targetFrame.index);
+      if (pos < 0) return null;
+      let start = pos;
+      while (start > 0 && !vids[start]._isKeyFrame) start -= 1;
+      let end = pos;
+      let p = pos + 1;
+      while (p < vids.length && !vids[p]._isKeyFrame) p += 1;
+      end = p < vids.length ? p - 1 : vids.length - 1;
+      return { startFrame: vids[start], endFrame: vids[end], targetFrame };
+    }
+    function isFrameInTinyDecoderRange(frame) {
+      if (!frame || !tinyDecoderGopRange) return false;
+      const idx = Number(frame.index);
+      if (!Number.isFinite(idx)) return false;
+      return idx >= tinyDecoderGopRange.startIndex && idx <= tinyDecoderGopRange.endIndex;
+    }
+    function updateTinyDecoderRangeOnSelection(frame) {
+      if (!frame || !tinyDecoderGopRange) return;
+      const idx = Number(frame.index);
+      if (!Number.isFinite(idx)) return;
+      if (idx > tinyDecoderGopRange.endIndex) {
+        console.info("[decode-switch] tinyh264 -> webcodecs reset at next GOP", {
+          prevRange: tinyDecoderGopRange,
+          frameIndex: idx,
+        });
+        tinyDecoderGopRange = null;
+      }
+    }
+    async function fallbackDecodeGopByMse(targetFrame, webcodecsErr = null) {
+      const out = await libDecodeGopByMseFallback({
+        targetFrame,
+        allFrames,
+        result,
+        fileBytes: currentFileBytes,
+        canvas: canvasEl,
+        mseVideoElement: null,
+        onStatus: setStatus,
+      });
+      const gop = findGopRangeByFrame(targetFrame);
+      if (out?.mode === "tinyh264" && gop?.startFrame && gop?.endFrame) {
+        tinyDecoderGopRange = {
+          startIndex: Number(gop.startFrame.index),
+          endIndex: Number(gop.endFrame.index),
+        };
+      } else if (out?.mode && out.mode !== "tinyh264") {
+        tinyDecoderGopRange = null;
+      }
+      if (out?.mode === "tinyh264") {
+        console.info("[decode-switch] webcodecs -> tinyh264 success", {
+          frameIndex: targetFrame?.index ?? null,
+          mode: out.mode,
+          gopRange: tinyDecoderGopRange,
+        });
+      }
+      if (webcodecsErr) console.warn("Switched to tinyh264 fallback after WebCodecs failure", webcodecsErr);
+      if (out?.mode === "tinyh264" && tinyDecoderGopRange) {
+        setStatus(`tinyh264 fallback done @ frame ${targetFrame.index}. decoder locked for GOP ${tinyDecoderGopRange.startIndex}-${tinyDecoderGopRange.endIndex}`);
+      } else {
+        setStatus(`tinyh264 fallback done @ frame ${targetFrame.index}.`);
+      }
+    }
+    function selectedFrame() {
+      if (selectedIndex < 0 || selectedIndex >= shownFrames.length) return null;
+      return shownFrames[selectedIndex];
+    }
+    function findShownIndexByFrameGlobalIndex(globalFrameIndex) {
+      if (!Number.isFinite(globalFrameIndex)) return -1;
+      return shownFrames.findIndex((f) => Number(f?.index) === Number(globalFrameIndex));
+    }
+    function scrollFrameRowIntoView(shownIdx) {
+      const row = framesBodyEl.querySelector(`tr[data-idx="${shownIdx}"]`);
+      if (!row) return;
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    function syncPlaybackCursorByGlobalFrameIndex(globalFrameIndex, opts = {}) {
+      const shownIdx = findShownIndexByFrameGlobalIndex(globalFrameIndex);
+      if (shownIdx < 0) return;
+      playingFrameIndex = globalFrameIndex;
+      selectedIndex = shownIdx;
+      renderFrames();
+      const sf = selectedFrame();
+      renderSelectedInfo(sf);
+      renderHex(sf);
+      renderSelectedTree(sf);
+      if (opts.scroll !== false) scrollFrameRowIntoView(shownIdx);
+    }
+    function frameOffsetValue(f) {
+      const rf = f?._rawFrame || {};
+      const fs = rf.formatSpecific || {};
+      if (Number.isFinite(rf.offset)) return rf.offset;
+      if (Number.isFinite(fs.offset)) return fs.offset;
+      return Number.POSITIVE_INFINITY;
+    }
+    function frameTimeValueSec(f) {
+      const rf = f?._rawFrame || {};
+      if (typeof rf.ptsTime === "number" && Number.isFinite(rf.ptsTime)) return rf.ptsTime;
+      if (typeof rf.dtsTime === "number" && Number.isFinite(rf.dtsTime)) return rf.dtsTime;
+      const tick = rf.pts ?? rf.dts ?? rf.timestamp;
+      if (typeof tick === "number" && Number.isFinite(tick)) return tick / 1000;
+      return Number.POSITIVE_INFINITY;
+    }
+    function sortFramesByMode(frames, mode) {
+      const arr = [...(Array.isArray(frames) ? frames : [])];
+      if (mode === "time") {
+        arr.sort((a, b) => {
+          const at = frameTimeValueSec(a);
+          const bt = frameTimeValueSec(b);
+          if (at !== bt) return at - bt;
+          const ao = frameOffsetValue(a);
+          const bo = frameOffsetValue(b);
+          if (ao !== bo) return ao - bo;
+          const ai = Number.isFinite(a?.index) ? a.index : Number.POSITIVE_INFINITY;
+          const bi = Number.isFinite(b?.index) ? b.index : Number.POSITIVE_INFINITY;
+          return ai - bi;
+        });
+        return arr;
+      }
+      arr.sort((a, b) => {
+        const ao = frameOffsetValue(a);
+        const bo = frameOffsetValue(b);
+        if (ao !== bo) return ao - bo;
+        const at = frameTimeValueSec(a);
+        const bt = frameTimeValueSec(b);
+        if (at !== bt) return at - bt;
+        const ai = Number.isFinite(a?.index) ? a.index : Number.POSITIVE_INFINITY;
+        const bi = Number.isFinite(b?.index) ? b.index : Number.POSITIVE_INFINITY;
+        return ai - bi;
+      });
+      return arr;
+    }
+    function collectNaluItems(fs) {
+      const out = [];
+      if (!fs || typeof fs !== "object") return out;
+      Object.keys(fs)
+        .filter((k) => /^nalu\[\d+\]$/.test(k))
+        .sort((a, b) => Number(a.match(/\d+/)?.[0] || 0) - Number(b.match(/\d+/)?.[0] || 0))
+        .forEach((k) => {
+          if (fs[k] && typeof fs[k] === "object") out.push(fs[k]);
+        });
+      if (Array.isArray(fs.nalus)) {
+        for (const n of fs.nalus) if (n && typeof n === "object") out.push(n);
+      }
+      if (fs.es && Array.isArray(fs.es.nalus)) {
+        for (const n of fs.es.nalus) if (n && typeof n === "object") out.push(n);
+      }
+      if (fs.pes && Array.isArray(fs.pes.nalus)) {
+        for (const n of fs.pes.nalus) if (n && typeof n === "object") out.push(n);
+      }
+      return out;
+    }
+    function getVideoStreamByIndex(streamIndex) {
+      const streams = result?.streams || [];
+      if (typeof streamIndex === "number") {
+        const hit = streams.find((s) => s.index === streamIndex && s.codecType === "video");
+        if (hit) return hit;
+      }
+      return streams.find((s) => s.codecType === "video") || null;
+    }
+    function extractPayloadForNaluParse(rf) {
+      const fileData = result?.formatSpecific?.fileData || null;
+      const fs = rf?.formatSpecific || {};
+      let payload = sliceFrameBytes(rf, fileData);
+      if (!(payload instanceof Uint8Array) || payload.length === 0) {
+        return { payload: null, baseOffset: 0 };
+      }
+      let baseOffset = Number.isFinite(rf?.offset) ? rf.offset : (Number.isFinite(fs?.offset) ? fs.offset : 0);
+      // FLV: adapt from chunk-0008 e2() payload extraction (strip tag header + avc/hevc packet header)
+      if (result?.format?.formatName === "flv" || fs?.tagType === 9 || payload[0] === 9) {
+        if (payload[0] === 9 && payload.length > 16) {
+          payload = payload.slice(11);
+          baseOffset += 11;
+          const codecId = payload[0] & 0x0f;
+          const packetType = payload[1];
+          if ((codecId === 7 || codecId === 12) && packetType === 1 && payload.length > 5) {
+            payload = payload.slice(5);
+            baseOffset += 5;
+          }
+        } else if (payload.length > 5 && payload[1] === 1) {
+          payload = payload.slice(5);
+          baseOffset += 5;
+        }
+      }
+      return { payload, baseOffset };
+    }
+    function parseNalusFromFrame(rf) {
+      if (!rf || rf.mediaType !== "video") return { nalus: [], fieldOffsets: [] };
+      const stream = getVideoStreamByIndex(rf.streamIndex);
+      const codecName = String(rf.codecName || stream?.codecName || "").toLowerCase();
+      const { payload, baseOffset } = extractPayloadForNaluParse(rf);
+      if (!(payload instanceof Uint8Array) || payload.length === 0) return { nalus: [], fieldOffsets: [] };
+      const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const fieldOffsets = {};
+      try {
+        if (codecName.includes("264") || codecName.includes("avc")) {
+          const lsmo = stream?.decoderConfig?.lengthSizeMinusOne ?? 3;
+          const parsed = parseAvcLengthPrefixedNalUnits(
+            dv,
+            0,
+            payload.length,
+            lsmo,
+            fieldOffsets,
+            stream?.decoderConfig || null
+          );
+          return { nalus: Array.isArray(parsed) ? parsed : [], fieldOffsets: normalizeFieldOffsets(fieldOffsets, baseOffset) };
+        }
+        if (codecName.includes("265") || codecName.includes("hevc") || codecName.includes("hev1") || codecName.includes("hvc1")) {
+          const lsmo = stream?.decoderConfig?.lengthSizeMinusOne ?? 3;
+          const parsed = parseHevcLengthPrefixedNalUnits(
+            dv,
+            0,
+            payload.length,
+            lsmo,
+            fieldOffsets,
+            stream?.decoderConfig || null
+          );
+          return { nalus: Array.isArray(parsed) ? parsed : [], fieldOffsets: normalizeFieldOffsets(fieldOffsets, baseOffset) };
+        }
+      } catch (err) {
+        console.warn("parseNalusFromFrame failed", err);
+      }
+      return { nalus: [], fieldOffsets: [] };
+    }
+    function pickKeys(obj, keys) {
+      const out = {};
+      for (const k of keys) {
+        if (obj && obj[k] !== undefined) out[k] = obj[k];
+      }
+      return out;
+    }
+    function normalizeFieldOffsets(fieldOffsets, baseOffset = 0) {
+      if (!fieldOffsets || typeof fieldOffsets !== "object") return [];
+      const rows = [];
+      for (const [k, v] of Object.entries(fieldOffsets)) {
+        if (!v || typeof v !== "object") continue;
+        if (typeof v.offset === "number" && typeof v.length === "number") {
+          rows.push({ field: k, offset: v.offset + baseOffset, length: v.length });
+        }
+      }
+      rows.sort((a, b) => a.offset - b.offset);
+      return rows.slice(0, 200);
+    }
+    function setActiveFieldByKey(key) {
+      activeFieldKey = key || null;
+      renderSelectedTree(selectedFrame());
+      renderHex(selectedFrame());
+    }
+    function findFieldByByteIndex(localByteIndex) {
+      const abs = currentHexBaseOffset + localByteIndex;
+      for (const row of currentFieldRows) {
+        if (abs >= row.offset && abs < row.offset + row.length) return row;
+      }
+      return null;
+    }
+    function buildFrameDetail(frame) {
+      if (!frame || !frame._rawFrame) return null;
+      const rf = frame._rawFrame;
+      const fs = rf.formatSpecific || {};
+      let parsedNalus = collectNaluItems(fs);
+      let parsedFieldOffsets = normalizeFieldOffsets(fs.fieldOffsets);
+      if (parsedNalus.length === 0 && rf.mediaType === "video") {
+        const reparsed = parseNalusFromFrame(rf);
+        if (reparsed.nalus.length > 0) parsedNalus = reparsed.nalus;
+        if (reparsed.fieldOffsets.length > 0) parsedFieldOffsets = reparsed.fieldOffsets;
+      }
+      const naluItems = parsedNalus.map((n, i) => ({
+        index: i,
+        nal_unit_type: n.nal_unit_type ?? n._nal_unit_type_value ?? null,
+        naluLength: n.naluLength ?? n.totalLength ?? null,
+        slice_type: n.slice_type ?? n._slice_type_value ?? null,
+        frame_num: n.frame_num ?? null,
+        poc: n.pic_order_cnt_lsb ?? n.slice_pic_order_cnt_lsb ?? null,
+      }));
+      const flvTag =
+        fs.tagType !== undefined || fs.tagTypeName !== undefined
+          ? pickKeys(fs, [
+              "tagType",
+              "tagTypeName",
+              "dataSize",
+              "timestamp",
+              "timestampFull",
+              "isExHeader",
+              "packetType",
+              "fourCC",
+              "codecId",
+              "mediaType",
+              "pictureType",
+              "offset",
+              "byteLength",
+            ])
+          : null;
+      return {
+        frameIndex: rf.index ?? frame.index ?? null,
+        mediaType: rf.mediaType ?? frame._mediaType ?? null,
+        codecName: rf.codecName ?? frame._codecFormat ?? null,
+        time: pickKeys(rf, ["pts", "dts", "ptsTime", "dtsTime", "timestamp"]),
+        naluCount: naluItems.length,
+        nalus: naluItems,
+        flvTag,
+        fieldOffsets: parsedFieldOffsets,
+      };
+    }
+    function renderSelectedTree(frame) {
+      const detail = buildFrameDetail(frame);
+      if (!detail) {
+        selectedTreeEl.innerHTML = `<div class="field-empty">No details.</div>`;
+        currentFieldRows = [];
+        activeFieldKey = null;
+        return;
+      }
+      currentFieldRows = detail.fieldOffsets;
+      if (currentFieldRows.length === 0) {
+        activeFieldKey = null;
+      } else if (!currentFieldRows.some((r) => `${r.field}@${r.offset}:${r.length}` === activeFieldKey)) {
+        const r0 = currentFieldRows[0];
+        activeFieldKey = `${r0.field}@${r0.offset}:${r0.length}`;
+      }
+      const naluLines = detail.nalus
+        .slice(0, 120)
+        .map((n) => `<div class="tree-line"><span class="tree-key">[${n.index}]</span>type=${esc(n.nal_unit_type ?? "-")} len=${esc(n.naluLength ?? "-")} slice=${esc(n.slice_type ?? "-")} poc=${esc(n.poc ?? "-")}</div>`)
+        .join("");
+      const flvRows = detail.flvTag
+        ? Object.entries(detail.flvTag)
+            .map(([k, v]) => `<div class="tree-line"><span class="tree-key">${esc(k)}</span>${esc(v)}</div>`)
+            .join("")
+        : `<div class="tree-line">-</div>`;
+      const fieldRows = detail.fieldOffsets.length
+        ? detail.fieldOffsets
+            .map((r, i) => {
+              const key = `${r.field}@${r.offset}:${r.length}`;
+              const cls = key === activeFieldKey ? "field-item active" : "field-item";
+              return `<div class="${cls}" data-field-key="${esc(key)}">${esc(String(i).padStart(3, "0"))} ${esc(r.field)} [${r.offset}, ${r.length}]</div>`;
+            })
+            .join("")
+        : `<div class="tree-line">-</div>`;
+      selectedTreeEl.innerHTML = `
+        <details open>
+          <summary>Time</summary>
+          <div class="tree-line"><span class="tree-key">pts</span>${esc(detail.time.pts ?? "-")}</div>
+          <div class="tree-line"><span class="tree-key">dts</span>${esc(detail.time.dts ?? "-")}</div>
+          <div class="tree-line"><span class="tree-key">ptsTime</span>${esc(detail.time.ptsTime ?? "-")}</div>
+          <div class="tree-line"><span class="tree-key">dtsTime</span>${esc(detail.time.dtsTime ?? "-")}</div>
+          <div class="tree-line"><span class="tree-key">pts(HMS)</span>${esc(formatHms(detail.time.ptsTime))}</div>
+          <div class="tree-line"><span class="tree-key">dts(HMS)</span>${esc(formatHms(detail.time.dtsTime))}</div>
+        </details>
+        <details open>
+          <summary>NALU (${detail.naluCount})</summary>
+          ${naluLines || `<div class="tree-line">-</div>`}
+        </details>
+        <details open>
+          <summary>FLV Tag</summary>
+          ${flvRows}
+        </details>
+        <details open>
+          <summary>Field Offsets (${detail.fieldOffsets.length})</summary>
+          ${fieldRows}
+        </details>
+      `;
+    }
+    function renderSelectedInfo(frame) {
+      if (!frame) {
+        selectedInfoEl.innerHTML = `<div class="k">selected</div><div>-</div>`;
+        return;
+      }
+      const rows = [
+        ["index", frame.index],
+        ["mediaType", frame._mediaType],
+        ["codec", frame._codecFormat],
+        ["pictureType", frame._pictureType ?? "-"],
+        ["isKeyFrame", frame._isKeyFrame ? "true" : "false"],
+        ["pts(ms)", frame._pts ?? "-"],
+        ["size", frame._size ?? "-"],
+        ["displayName", frame.displayName],
+      ];
+      if (shownFrames.length > 0 && frame._mediaType === "video") {
+        const rel = buildFrameReferenceRelations(frame, shownFrames, resultMap || {});
+        const txt = rel.relations.map((r) => `${r.label}:${r.frame.index}`).join(", ");
+        rows.push(["refStatus", rel.status]);
+        rows.push(["references", txt || "-"]);
+      }
+      selectedInfoEl.innerHTML = rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join("");
+    }
+    function renderHex(frame) {
+      hexWrapEl.innerHTML = "";
+      if (!frame || !result) return;
+      const primaryBytes = result?.formatSpecific?.fileData || null;
+      const bytes = sliceFrameBytes(frame._rawFrame, primaryBytes);
+      currentHexBytes = bytes instanceof Uint8Array ? bytes : null;
+      const fs = frame?._rawFrame?.formatSpecific || {};
+      currentHexBaseOffset = Number.isFinite(frame?._rawFrame?.offset)
+        ? frame._rawFrame.offset
+        : (Number.isFinite(fs.offset) ? fs.offset : 0);
+      if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+        hexWrapEl.innerHTML = `<div class="muted" style="padding:8px">No frame payload bytes.</div>`;
+        return;
+      }
+      let highlightOffset = -1;
+      let highlightLength = 0;
+      if (activeFieldKey) {
+        const hit = currentFieldRows.find((r) => `${r.field}@${r.offset}:${r.length}` === activeFieldKey);
+        if (hit) {
+          highlightOffset = hit.offset - currentHexBaseOffset;
+          highlightLength = hit.length;
+        }
+      }
+      const bpl = computeHexBytesPerLine(hexWrapEl.clientWidth || 900);
+      const rows = buildHexViewRows(bytes, {
+        bytesPerLine: bpl,
+        showAscii: true,
+        highlightOffset,
+        highlightLength,
+      });
+      hexWrapEl.innerHTML = rows.map((r) => {
+        const absOffsetHex = (r.rowStart + currentHexBaseOffset).toString(16).toUpperCase().padStart(8, "0");
+        const hs = r.bytes
+          .map((b) => `<span class="hex-b ${b.highlighted ? "hi" : ""}" data-byte-index="${b.index}">${b.hex}</span>`)
+          .join(" ");
+        return `<div class="hex-row"><div class="hex-off">${absOffsetHex}</div><div class="hex-bytes">${hs}</div><div class="hex-ascii">${esc(r.ascii || "")}</div></div>`;
+      }).join("");
+    }
+    function getFrameTimeSec(f) {
+      const rf = f?._rawFrame || {};
+      const t = rf.ptsTime ?? rf.dtsTime;
+      if (typeof t === "number" && Number.isFinite(t)) return t;
+      const tick = rf.pts ?? rf.dts ?? rf.timestamp;
+      if (typeof tick === "number" && Number.isFinite(tick)) return tick / 1000;
+      return null;
+    }
+    function formatHms(secVal) {
+      const n = Number(secVal);
+      if (!Number.isFinite(n)) return "-";
+      const sign = n < 0 ? "-" : "";
+      const abs = Math.abs(n);
+      const hh = Math.floor(abs / 3600);
+      const mm = Math.floor((abs % 3600) / 60);
+      const ss = Math.floor(abs % 60);
+      const ms = Math.floor((abs - Math.floor(abs)) * 1000);
+      return `${sign}${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+    }
+    function formatVideoDecodeError(err) {
+      const diag = err?.diagnostics || {};
+      const chunk = diag?.chunk || diag?.decodePlan?.errorChunk || null;
+      const idx = chunk?.frameIndex ?? null;
+      const off = diag?.selectedFrame?.offset ?? null;
+      const pts = chunk?.ptsTime ?? diag?.selectedFrame?.ptsTime ?? null;
+      const parts = [
+        `Video decode failed: ${err?.message || String(err)}`,
+        idx !== null ? `frame=${idx}` : null,
+        Number.isFinite(off) ? `offset=0x${off.toString(16).toUpperCase()}` : null,
+        Number.isFinite(pts) ? `ptsTime=${Number(pts).toFixed(3)}s` : null,
+      ].filter(Boolean);
+      return parts.join(" | ");
+    }
+    function detectAvccLengthSize(bytes) {
+      if (!(bytes instanceof Uint8Array) || bytes.length < 5) return 4;
+      for (const n of [4, 2, 1, 3]) {
+        let off = 0;
+        let ok = false;
+        while (off + n <= bytes.length) {
+          let len = 0;
+          for (let i = 0; i < n; i++) len = (len << 8) | bytes[off + i];
+          off += n;
+          if (len <= 0 || off + len > bytes.length) {
+            ok = false;
+            break;
+          }
+          off += len;
+          ok = true;
+          if (off === bytes.length) return n;
+        }
+        if (ok && off === bytes.length) return n;
+      }
+      return 4;
+    }
+    function splitAvccNalus(bytes, lengthSize = 4) {
+      const out = [];
+      if (!(bytes instanceof Uint8Array) || bytes.length <= lengthSize) return out;
+      let off = 0;
+      while (off + lengthSize <= bytes.length) {
+        let len = 0;
+        for (let i = 0; i < lengthSize; i++) len = (len << 8) | bytes[off + i];
+        off += lengthSize;
+        if (len <= 0 || off + len > bytes.length) return [];
+        out.push(bytes.subarray(off, off + len));
+        off += len;
+      }
+      if (off !== bytes.length) return [];
+      return out;
+    }
+    function joinAvccNalus(nalus, lengthSize = 4) {
+      const arr = Array.isArray(nalus) ? nalus.filter((n) => n instanceof Uint8Array && n.length > 0) : [];
+      const total = arr.reduce((s, n) => s + lengthSize + n.length, 0);
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const nalu of arr) {
+        let len = nalu.length;
+        for (let i = lengthSize - 1; i >= 0; i--) {
+          out[off + i] = len & 0xff;
+          len >>>= 8;
+        }
+        off += lengthSize;
+        out.set(nalu, off);
+        off += nalu.length;
+      }
+      return out;
+    }
+    function h264NalType(nalu) {
+      if (!(nalu instanceof Uint8Array) || nalu.length < 1) return -1;
+      return nalu[0] & 0x1f;
+    }
+    function cloneEncodedFrames(frames) {
+      return (Array.isArray(frames) ? frames : []).map((f) => ({
+        type: f?.type === "key" ? "key" : "delta",
+        data: f?.data instanceof Uint8Array ? f.data.slice(0) : new Uint8Array(0),
+      }));
+    }
+    function buildDecodeAttempts({ plan, codecFamily }) {
+      const base = cloneEncodedFrames(plan?.encodedFrames);
+      const attempts = [
+        { name: "original", encodedFrames: base, description: plan?.description || null },
+      ];
+      attempts.push({
+        name: "original-no-description",
+        encodedFrames: cloneEncodedFrames(base),
+        description: null,
+      });
+      if (codecFamily !== "h264" || !base.length) return attempts;
+      const first = base[0]?.data;
+      const lengthSize = detectAvccLengthSize(first);
+      const withoutAud = cloneEncodedFrames(base).map((f) => {
+        const nalus = splitAvccNalus(f.data, lengthSize);
+        if (!nalus.length) return f;
+        const kept = nalus.filter((n) => h264NalType(n) !== 9);
+        if (!kept.length) return f;
+        return { ...f, data: joinAvccNalus(kept, lengthSize) };
+      });
+      attempts.push({
+        name: "drop-aud",
+        encodedFrames: withoutAud,
+        description: plan?.description || null,
+      });
+      attempts.push({
+        name: "drop-aud-no-description",
+        encodedFrames: cloneEncodedFrames(withoutAud),
+        description: null,
+      });
+      const firstNalus = splitAvccNalus(first, lengthSize);
+      if (firstNalus.length) {
+        const sps = firstNalus.find((n) => h264NalType(n) === 7) || null;
+        const pps = firstNalus.find((n) => h264NalType(n) === 8) || null;
+        const idr = firstNalus.find((n) => h264NalType(n) === 5) || null;
+        const idrOnly = idr ? joinAvccNalus([idr], lengthSize) : null;
+        const inband = (sps && pps && idr) ? joinAvccNalus([sps, pps, idr], lengthSize) : null;
+        if (idrOnly) {
+          attempts.push({
+            name: "idr-only-no-description",
+            encodedFrames: [{ type: "key", data: idrOnly }],
+            description: null,
+          });
+        }
+        if (inband) {
+          attempts.push({
+            name: "inband-sps-pps-idr-no-description",
+            encodedFrames: [{ type: "key", data: inband }],
+            description: null,
+          });
+          attempts.push({
+            name: "inband-sps-pps-idr-with-description",
+            encodedFrames: [{ type: "key", data: inband }],
+            description: plan?.description || null,
+          });
+        }
+      }
+      return attempts;
+    }
+    function toPrettyJson(v) {
+      try {
+        return JSON.stringify(v ?? null, null, 2);
+      } catch {
+        return String(v);
+      }
+    }
+    function buildFailureSnapshotText(err, extra = {}) {
+      const diagnostics = err?.diagnostics || {};
+      const chunk = diagnostics?.chunk || diagnostics?.decodePlan?.errorChunk || null;
+      const lines = [];
+      lines.push("=== Video Decode Failure Snapshot ===");
+      lines.push(`time: ${new Date().toISOString()}`);
+      lines.push(`message: ${err?.message || String(err)}`);
+      lines.push(`status: ${formatVideoDecodeError(err)}`);
+      if (extra?.context) lines.push(`context: ${extra.context}`);
+      lines.push("");
+      lines.push("[selectedFrame]");
+      lines.push(toPrettyJson(diagnostics?.selectedFrame || null));
+      lines.push("");
+      lines.push("[chunk]");
+      lines.push(toPrettyJson(chunk));
+      lines.push("");
+      lines.push("[decodePlan]");
+      lines.push(toPrettyJson(diagnostics?.decodePlan || null));
+      lines.push("");
+      lines.push("[diagnostics]");
+      lines.push(toPrettyJson(diagnostics));
+      return lines.join("\n");
+    }
+    function setFailureSnapshotFromError(err, extra = {}) {
+      const text = buildFailureSnapshotText(err, extra);
+      failureTextEl.value = text;
+    }
+    function getSelectedFramePtsSec() {
+      const sf = selectedFrame();
+      if (!sf) return null;
+      return getFrameTimeSec(sf);
+    }
+    function getSegmentBoundsSec() {
+      const s = Number(segStartEl.value);
+      const e = Number(segEndEl.value);
+      if (!Number.isFinite(s) || !Number.isFinite(e)) {
+        throw new Error("Segment start/end must be valid numbers.");
+      }
+      if (e < s) throw new Error("Segment end must be >= start.");
+      return { startSec: s, endSec: e };
+    }
+    function getFramesBySegment(mediaType, startSec, endSec) {
+      const arr = (allFrames || []).filter((f) => {
+        if (mediaType && f._mediaType !== mediaType) return false;
+        const t = getFrameTimeSec(f);
+        return typeof t === "number" && t >= startSec && t <= endSec;
+      });
+      arr.sort((a, b) => {
+        const at = getFrameTimeSec(a);
+        const bt = getFrameTimeSec(b);
+        if (at !== bt) return at - bt;
+        const ai = Number.isFinite(a?.index) ? a.index : Number.POSITIVE_INFINITY;
+        const bi = Number.isFinite(b?.index) ? b.index : Number.POSITIVE_INFINITY;
+        return ai - bi;
+      });
+      return arr;
+    }
+    function stopSegmentPlayback() {
+      segmentPlayToken += 1;
+      if (activeSegmentAudioProgressTimer) {
+        clearInterval(activeSegmentAudioProgressTimer);
+        activeSegmentAudioProgressTimer = null;
+      }
+      if (activeAudioWaveformAnimId) {
+        cancelAnimationFrame(activeAudioWaveformAnimId);
+        activeAudioWaveformAnimId = 0;
+      }
+      for (const src of activeSegmentAudioSources) {
+        try {
+          src.stop();
+        } catch {
+          // ignore stop error
+        }
+      }
+      activeSegmentAudioSources = [];
+      playingFrameIndex = null;
+      renderFrames();
+    }
+    function clearPlaybackCanvas() {
+      const ctx = canvasEl.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
+    }
+    function drawAudioWaveformFrame(analyser, dataArray) {
+      const ctx = canvasEl.getContext("2d");
+      if (!ctx) return;
+      const width = Math.max(640, Math.floor(canvasEl.clientWidth || 860));
+      const height = Math.max(220, Math.floor(canvasEl.clientHeight || 260));
+      if (canvasEl.width !== width || canvasEl.height !== height) {
+        canvasEl.width = width;
+        canvasEl.height = height;
+      }
+      analyser.getByteTimeDomainData(dataArray);
+      ctx.fillStyle = "#0f1622";
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = "#4cd3ff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const sliceWidth = width / dataArray.length;
+      let x = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * height) / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += sliceWidth;
+      }
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+      ctx.fillStyle = "#9cc8ff";
+      ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.fillText("Audio Waveform", 12, 20);
+    }
+    function startAudioWaveformRender(analyser) {
+      if (!(analyser instanceof AnalyserNode)) return;
+      if (activeAudioWaveformAnimId) {
+        cancelAnimationFrame(activeAudioWaveformAnimId);
+        activeAudioWaveformAnimId = 0;
+      }
+      analyser.fftSize = 2048;
+      const dataArray = new Uint8Array(analyser.fftSize);
+      const loop = () => {
+        drawAudioWaveformFrame(analyser, dataArray);
+        activeAudioWaveformAnimId = requestAnimationFrame(loop);
+      };
+      loop();
+    }
+    function startAudioSegmentProgressTracking({
+      token,
+      ctx,
+      startWhen,
+      segmentPtsStart,
+      targetAudioFrames,
+    }) {
+      if (activeSegmentAudioProgressTimer) {
+        clearInterval(activeSegmentAudioProgressTimer);
+        activeSegmentAudioProgressTimer = null;
+      }
+      let lastFrameIndex = null;
+      const tick = () => {
+        if (token !== segmentPlayToken) return;
+        if (!Array.isArray(targetAudioFrames) || targetAudioFrames.length === 0) return;
+        const elapsedSec = Math.max(0, ctx.currentTime - startWhen);
+        const currentPtsSec = segmentPtsStart + elapsedSec;
+        let currentFrame = targetAudioFrames[0];
+        for (let i = 0; i < targetAudioFrames.length; i++) {
+          const t = getFrameTimeSec(targetAudioFrames[i]);
+          if (typeof t !== "number") continue;
+          if (t <= currentPtsSec) currentFrame = targetAudioFrames[i];
+          else break;
+        }
+        const currentIndex = Number(currentFrame?.index);
+        if (Number.isFinite(currentIndex) && currentIndex !== lastFrameIndex) {
+          lastFrameIndex = currentIndex;
+          syncPlaybackCursorByGlobalFrameIndex(currentIndex, { scroll: true });
+        }
+      };
+      tick();
+      activeSegmentAudioProgressTimer = setInterval(tick, 120);
+    }
+    function drawSeriesChart(canvas, seriesList, opts = {}) {
+      if (!(canvas instanceof HTMLCanvasElement)) return;
+      const width = Math.max(320, Math.floor(canvas.clientWidth || 900));
+      const height = 140;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#0f1622";
+      ctx.fillRect(0, 0, width, height);
+      const pad = { l: 38, r: 10, t: 10, b: 22 };
+      const pw = width - pad.l - pad.r;
+      const ph = height - pad.t - pad.b;
+      const all = seriesList.flatMap((s) => s.points || []);
+      if (all.length === 0) {
+        ctx.fillStyle = "#97a3b6";
+        ctx.font = "12px ui-monospace";
+        ctx.fillText("No data", 12, 20);
+        return;
+      }
+      let minX = Math.min(...all.map((p) => p.x));
+      let maxX = Math.max(...all.map((p) => p.x));
+      let minY = Math.min(...all.map((p) => p.y));
+      let maxY = Math.max(...all.map((p) => p.y));
+      if (opts.zeroY) minY = Math.min(0, minY);
+      if (minX === maxX) maxX = minX + 1;
+      if (minY === maxY) maxY = minY + 1;
+      const sx = (x) => pad.l + ((x - minX) / (maxX - minX)) * pw;
+      const sy = (y) => pad.t + ph - ((y - minY) / (maxY - minY)) * ph;
+      ctx.strokeStyle = "#243149";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.l, pad.t);
+      ctx.lineTo(pad.l, pad.t + ph);
+      ctx.lineTo(pad.l + pw, pad.t + ph);
+      ctx.stroke();
+      if (minY < 0 && maxY > 0) {
+        const y0 = sy(0);
+        ctx.strokeStyle = "#334869";
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y0);
+        ctx.lineTo(pad.l + pw, y0);
+        ctx.stroke();
+      }
+      for (const s of seriesList) {
+        const pts = s.points || [];
+        if (pts.length === 0) continue;
+        ctx.strokeStyle = s.color || "#5da8ff";
+        ctx.fillStyle = s.color || "#5da8ff";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = sx(p.x);
+          const y = sy(p.y);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#97a3b6";
+      ctx.font = "11px ui-monospace";
+      ctx.fillText(`x:${opts.xLabel || ""}`, pad.l, height - 6);
+      ctx.fillText(`y:${opts.yLabel || ""}`, 4, 12);
+      ctx.fillText(`${minY.toFixed(1)}`, 2, sy(minY));
+      ctx.fillText(`${maxY.toFixed(1)}`, 2, sy(maxY));
+    }
+    function renderStatsPanel() {
+      const frames = shownFrames || [];
+      const video = frames.filter((f) => f._mediaType === "video");
+      const audio = frames.filter((f) => f._mediaType === "audio");
+      const durationSec = (() => {
+        const ts = frames.map(getFrameTimeSec).filter((v) => typeof v === "number");
+        if (ts.length < 2) return 0;
+        return Math.max(0, Math.max(...ts) - Math.min(...ts));
+      })();
+      const totalBytes = frames.reduce((s, f) => s + (Number(f._size) || 0), 0);
+      const avgKbps = durationSec > 0 ? (totalBytes * 8) / 1000 / durationSec : 0;
+      statsSummaryEl.innerHTML = `
+        <div class="stats-item"><span class="k">frames</span>${frames.length}</div>
+        <div class="stats-item"><span class="k">duration(s)</span>${durationSec.toFixed(3)}</div>
+        <div class="stats-item"><span class="k">avg bitrate(kbps)</span>${avgKbps.toFixed(2)}</div>
+        <div class="stats-item"><span class="k">A/V</span>v:${video.length} / a:${audio.length}</div>
+      `;
+      const intervalSeries = [];
+      const buildIntervals = (arr, color) => {
+        const pts = [];
+        for (let i = 1; i < arr.length; i++) {
+          const t0 = getFrameTimeSec(arr[i - 1]);
+          const t1 = getFrameTimeSec(arr[i]);
+          if (typeof t0 !== "number" || typeof t1 !== "number") continue;
+          pts.push({ x: i, y: (t1 - t0) * 1000 });
+        }
+        intervalSeries.push({ color, points: pts });
+      };
+      buildIntervals(video, "#5da8ff");
+      buildIntervals(audio, "#7ad17a");
+      drawSeriesChart(intervalChartEl, intervalSeries, { xLabel: "frame index", yLabel: "ms", zeroY: true });
+
+      const buckets = new Map();
+      for (const f of frames) {
+        const t = getFrameTimeSec(f);
+        if (typeof t !== "number") continue;
+        const sec = Math.floor(t);
+        const prev = buckets.get(sec) || { total: 0, video: 0, audio: 0 };
+        const bits = (Number(f._size) || 0) * 8;
+        prev.total += bits;
+        if (f._mediaType === "video") prev.video += bits;
+        if (f._mediaType === "audio") prev.audio += bits;
+        buckets.set(sec, prev);
+      }
+      const seconds = Array.from(buckets.keys()).sort((a, b) => a - b);
+      const bitrateSeries = [
+        { color: "#ffd166", points: seconds.map((s) => ({ x: s, y: (buckets.get(s).total || 0) / 1000 })) },
+        { color: "#5da8ff", points: seconds.map((s) => ({ x: s, y: (buckets.get(s).video || 0) / 1000 })) },
+        { color: "#7ad17a", points: seconds.map((s) => ({ x: s, y: (buckets.get(s).audio || 0) / 1000 })) },
+      ];
+      drawSeriesChart(bitrateChartEl, bitrateSeries, { xLabel: "second", yLabel: "kbps", zeroY: true });
+
+      const audioTs = audio.map(getFrameTimeSec).filter((v) => typeof v === "number").sort((a, b) => a - b);
+      const avPts = [];
+      for (let i = 0; i < video.length; i++) {
+        const vt = getFrameTimeSec(video[i]);
+        if (typeof vt !== "number" || audioTs.length === 0) continue;
+        let best = audioTs[0];
+        let bestAbs = Math.abs(vt - best);
+        for (let j = 1; j < audioTs.length; j++) {
+          const d = Math.abs(vt - audioTs[j]);
+          if (d < bestAbs) {
+            best = audioTs[j];
+            bestAbs = d;
+          }
+        }
+        avPts.push({ x: i, y: (vt - best) * 1000 });
+      }
+      drawSeriesChart(avSyncChartEl, [{ color: "#ff7aa2", points: avPts }], {
+        xLabel: "video frame index",
+        yLabel: "ms",
+        zeroY: true,
+      });
+    }
+    function renderFrames() {
+      const fmtTimeSec = (v) => (typeof v === "number" && Number.isFinite(v) ? v.toFixed(3) : "-");
+      const fmtTimeTick = (v) => (typeof v === "number" && Number.isFinite(v) ? String(v) : "-");
+      const fmtOffset = (f) => {
+        const off = frameOffsetValue(f);
+        return Number.isFinite(off) ? `0x${Math.max(0, off).toString(16).toUpperCase()}` : "-";
+      };
+      framesBodyEl.innerHTML = shownFrames.map((f, i) => `
+        <tr data-idx="${i}" class="${i === selectedIndex ? "selected" : ""} ${Number(f.index) === Number(playingFrameIndex) ? "playing" : ""} ${decodeExceptionFrameIndexes.has(Number(f.index)) ? "decode-error" : ""}">
+          <td>${i}</td>
+          <td>${f.index ?? "-"}</td>
+          <td>${fmtOffset(f)}</td>
+          <td>${esc(f._mediaType ?? "-")}</td>
+          <td>${fmtTimeTick(f._rawFrame?.pts ?? f._rawFrame?.timestamp ?? f._pts)}</td>
+          <td>${fmtTimeTick(f._rawFrame?.dts ?? f._rawFrame?.timestamp ?? "-")}</td>
+          <td>${fmtTimeSec(f._rawFrame?.ptsTime)}</td>
+          <td>${fmtTimeSec(f._rawFrame?.dtsTime)}</td>
+          <td>${formatHms(f._rawFrame?.ptsTime)}</td>
+          <td>${formatHms(f._rawFrame?.dtsTime)}</td>
+          <td>${f._size ?? "-"}</td>
+          <td>${esc(f._pictureType ?? "-")}</td>
+          <td>${esc(f._codecFormat ?? "-")}</td>
+        </tr>
+      `).join("");
+      countEl.textContent = `frames: ${shownFrames.length}`;
+    }
+    function rebuildList() {
+      const filter = filterEl.value;
+      const base = filter === "all" ? allFrames : getFilteredFrames(resultMap, filter, result?.format?.formatName);
+      shownFrames = sortFramesByMode(base, orderModeEl.value);
+      selectedIndex = shownFrames.length > 0 ? 0 : -1;
+      renderFrames();
+      const sf = selectedFrame();
+      renderSelectedInfo(sf);
+      renderHex(sf);
+      renderSelectedTree(sf);
+      renderStatsPanel();
+    }
+
+    async function decodeSelectedVideoFrame() {
+      const sf = selectedFrame();
+      if (!sf) throw new Error("No selected frame.");
+      if (sf._mediaType !== "video") return;
+      updateTinyDecoderRangeOnSelection(sf);
+      if (isFrameInTinyDecoderRange(sf)) {
+        setStatus(`Decode route: tinyh264 GOP range ${tinyDecoderGopRange.startIndex}-${tinyDecoderGopRange.endIndex}`);
+        await fallbackDecodeGopByMse(sf, null);
+        return;
+      }
+      const raw = sf._rawFrame;
+      const vStream = (result?.streams || []).find((s) => s.codecType === "video");
+      setStatus(`Decoding video frame=${raw.index} ...`);
+      try {
+        const ctx = canvasEl.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
+        const out = await libDecodeVideoFrameWithStrategies({
+          mediaInfo: resultMap,
+          targetFrameIndex: raw.index,
+          stream: vStream,
+          canvas: canvasEl,
+        });
+        console.info("[decode-switch] using webcodecs", {
+          frameIndex: raw.index,
+          strategy: out?.strategy || null,
+          codec: out?.codec || null,
+        });
+        setStatus(`Video decode done. strategy=${out?.strategy || "-"}, codec=${out?.codec || "-"}`);
+      } catch (err) {
+        const rf = raw || {};
+        const diagnostics = err?.diagnostics || {};
+        err.diagnostics = {
+          ...diagnostics,
+          selectedFrame: {
+            index: rf?.index ?? null,
+            offset: Number.isFinite(rf?.offset) ? rf.offset : (Number.isFinite(rf?.formatSpecific?.offset) ? rf.formatSpecific.offset : null),
+            pts: rf?.pts ?? null,
+            dts: rf?.dts ?? null,
+            ptsTime: rf?.ptsTime ?? null,
+            dtsTime: rf?.dtsTime ?? null,
+          },
+        };
+        throw err;
+      }
+    }
+    async function playVideoSegmentByPts() {
+      stopSegmentPlayback();
+      const token = segmentPlayToken;
+      const { startSec, endSec } = getSegmentBoundsSec();
+      const targetVideoFrames = getFramesBySegment("video", startSec, endSec);
+      if (!targetVideoFrames.length) throw new Error("No video frames in selected segment.");
+      const vStream = (result?.streams || []).find((s) => s.codecType === "video");
+      const codecString = await resolveVideoDecoderCodec(vStream);
+      if (!codecString) throw new Error(`Unsupported codecName for WebCodecs: ${vStream?.codecName || "unknown"}`);
+      const wallStart = performance.now();
+      const segmentPtsStart = getFrameTimeSec(targetVideoFrames[0]) || startSec;
+      setStatus(`Segment video play: frames=${targetVideoFrames.length}, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}]`);
+      for (let i = 0; i < targetVideoFrames.length; i++) {
+        if (token !== segmentPlayToken) return;
+        const f = targetVideoFrames[i];
+        syncPlaybackCursorByGlobalFrameIndex(f?.index, { scroll: true });
+        const pts = getFrameTimeSec(f);
+        if (typeof pts !== "number") continue;
+        const due = wallStart + Math.max(0, (pts - segmentPtsStart) * 1000);
+        const waitMs = due - performance.now();
+        if (waitMs > 1) await new Promise((r) => setTimeout(r, waitMs));
+        if (token !== segmentPlayToken) return;
+        try {
+          const plan = buildVideoDecodePlan({
+            mediaInfo: resultMap,
+            targetFrameIndex: f._rawFrame.index,
+          });
+          await decodeVideoFramesToCanvas({
+            encodedFrames: plan.encodedFrames,
+            frameMeta: plan.encodedFrameMeta || null,
+            codecString,
+            description: plan.description,
+            canvas: canvasEl,
+          });
+        } catch (err) {
+          markDecodeException(f, err, "segment-webcodecs");
+          const rf = f?._rawFrame || {};
+          const off = Number.isFinite(rf.offset) ? rf.offset : rf?.formatSpecific?.offset;
+          const msg = [
+            `Segment video play failed @ frame`,
+            `idx=${f?.index ?? "-"}`,
+            `offset=${Number.isFinite(off) ? `0x${off.toString(16).toUpperCase()}` : "-"}`,
+            `pts=${rf?.pts ?? "-"}`,
+            `ptsTime=${typeof rf?.ptsTime === "number" ? rf.ptsTime.toFixed(3) : "-"}`,
+            `err=${err?.message || String(err)}`,
+          ].join(" ");
+          setStatus(msg);
+          console.error("segment-video-frame-error", {
+            frameIndex: f?.index,
+            offset: off,
+            pts: rf?.pts,
+            ptsTime: rf?.ptsTime,
+            error: err,
+          });
+          try {
+            await fallbackDecodeGopByMse(f, err);
+            setStatus(`Segment video play switched to tinyh264 @ frame ${f?.index ?? "-"}.`);
+          } catch (fallbackErr) {
+            console.error("segment-video-tinyh264-fallback-error", {
+              frameIndex: f?.index,
+              error: fallbackErr,
+            });
+            throw fallbackErr;
+          }
+        }
+      }
+      if (token === segmentPlayToken) {
+        playingFrameIndex = null;
+        renderFrames();
+        setStatus("Segment video play done.");
+      }
+    }
+    async function playAudioSegmentByPts() {
+      stopSegmentPlayback();
+      const token = segmentPlayToken;
+      const { startSec, endSec } = getSegmentBoundsSec();
+      const targetAudioFrames = getFramesBySegment("audio", startSec, endSec);
+      if (!targetAudioFrames.length) throw new Error("No audio frames in selected segment.");
+      const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
+      if (!Ctx) throw new Error("WebAudio API is not available in this browser.");
+      const ctx = currentAudioCtx || new Ctx();
+      currentAudioCtx = ctx;
+      if (ctx.state === "suspended") await ctx.resume();
+      setStatus(`Segment audio play: frames=${targetAudioFrames.length}, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}]`);
+      const rawFrames = targetAudioFrames.map((f) => f?._rawFrame).filter(Boolean);
+      const bytes = buildAudioPlaybackBytesForFrameRange(rawFrames, resultMap);
+      if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+        throw new Error("No playable audio payload for selected segment.");
+      }
+      const decoded = await ctx.decodeAudioData(bytes.buffer.slice(0));
+      if (token !== segmentPlayToken) return;
+      const src = ctx.createBufferSource();
+      const analyser = ctx.createAnalyser();
+      src.buffer = decoded;
+      src.connect(analyser);
+      analyser.connect(ctx.destination);
+      const segmentPtsStart = getFrameTimeSec(targetAudioFrames[0]) || startSec;
+      const startWhen = Math.max(ctx.currentTime + 0.01, ctx.currentTime + 0.05);
+      startAudioWaveformRender(analyser);
+      src.start(startWhen);
+      activeSegmentAudioSources.push(src);
+      startAudioSegmentProgressTracking({
+        token,
+        ctx,
+        startWhen,
+        segmentPtsStart,
+        targetAudioFrames,
+      });
+      src.onended = () => {
+        if (token !== segmentPlayToken) return;
+        if (activeSegmentAudioProgressTimer) {
+          clearInterval(activeSegmentAudioProgressTimer);
+          activeSegmentAudioProgressTimer = null;
+        }
+        if (activeAudioWaveformAnimId) {
+          cancelAnimationFrame(activeAudioWaveformAnimId);
+          activeAudioWaveformAnimId = 0;
+        }
+        clearPlaybackCanvas();
+        playingFrameIndex = null;
+        renderFrames();
+        setStatus("Segment audio play done.");
+      };
+      setStatus(`Segment audio playing (${decoded.duration.toFixed(3)}s) with progress tracking.`);
+    }
+
+    async function analyzeCurrentFile() {
+      analyzeBtn.disabled = true;
+      try {
+        const f = fileEl.files?.[0];
+        if (!f) throw new Error("Please select a media file.");
+        setStatus(`Reading ${f.name} ...`);
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        currentFileBytes = bytes;
+        setStatus(`Analyzing ${f.name} ...`);
+        result = await analyzeByDetectedFormat(bytes, {
+          fileMeta: {
+            fileName: f.name,
+            fileSize: f.size,
+            fileType: f.type || null,
+            lastModified: f.lastModified,
+          },
+        });
+        const format = result?.format?.formatName || "unknown";
+        resultMap = { [format]: result };
+        allFrames = getFrames(resultMap, format);
+        shownFrames = sortFramesByMode(allFrames, orderModeEl.value);
+        selectedIndex = shownFrames.length > 0 ? 0 : -1;
+        renderFrames();
+        const sf = selectedFrame();
+        renderSelectedInfo(sf);
+        renderHex(sf);
+        renderSelectedTree(sf);
+        renderStatsPanel();
+        const timeline = allFrames.map(getFrameTimeSec).filter((v) => typeof v === "number");
+        if (timeline.length > 0) {
+          const minTs = Math.min(...timeline);
+          const maxTs = Math.max(...timeline);
+          if (!segStartEl.value) segStartEl.value = minTs.toFixed(3);
+          if (!segEndEl.value) segEndEl.value = maxTs.toFixed(3);
+        }
+        libEnsureTinyH264WorkerReady()
+          .then(() => {
+            console.info("[tinyh264] warmup ready");
+          })
+          .catch((e) => {
+            console.warn("[tinyh264] warmup failed", e);
+          });
+        setStatus(`Done. format=${format}, frames=${allFrames.length}`);
+        if (sf && sf._mediaType === "video") {
+          await decodeSelectedVideoFrame();
+        }
+      } catch (err) {
+        setStatus(`Analyze failed: ${err?.message || String(err)}`);
+      } finally {
+        analyzeBtn.disabled = false;
+      }
+    }
+
+    framesBodyEl.addEventListener("click", (ev) => {
+      const tr = ev.target.closest("tr[data-idx]");
+      if (!tr) return;
+      selectedIndex = Number(tr.dataset.idx);
+      playingFrameIndex = null;
+      renderFrames();
+      const sf = selectedFrame();
+      renderSelectedInfo(sf);
+      renderHex(sf);
+      renderSelectedTree(sf);
+      renderStatsPanel();
+      decodeSelectedVideoFrame().catch(async (err) => {
+        markDecodeException(selectedFrame(), err, "single-frame-click");
+        setStatus(`${formatVideoDecodeError(err)} (try tinyh264 fallback...)`);
+        console.error("video-decode-error", err);
+        if (err?.diagnostics) {
+          console.error("video-decode-diagnostics", err.diagnostics);
+          const chunk = err.diagnostics?.chunk || err.diagnostics?.decodePlan?.errorChunk;
+          if (chunk) console.table([chunk]);
+        }
+        setFailureSnapshotFromError(err, { context: "framesBody click auto-decode" });
+        try {
+          await fallbackDecodeGopByMse(selectedFrame(), err);
+        } catch (fallbackErr) {
+          console.error("tinyh264-fallback-error", fallbackErr);
+          setStatus(`${formatVideoDecodeError(err)} | tinyh264 fallback failed: ${fallbackErr?.message || String(fallbackErr)}`);
+        }
+      });
+    });
+    selectedTreeEl.addEventListener("click", (ev) => {
+      const el = ev.target.closest("[data-field-key]");
+      if (!el) return;
+      setActiveFieldByKey(el.dataset.fieldKey || null);
+    });
+    hexWrapEl.addEventListener("click", (ev) => {
+      const el = ev.target.closest("[data-byte-index]");
+      if (!el) return;
+      const idx = Number(el.dataset.byteIndex);
+      if (!Number.isFinite(idx)) return;
+      const hit = findFieldByByteIndex(idx);
+      if (!hit) return;
+      setActiveFieldByKey(`${hit.field}@${hit.offset}:${hit.length}`);
+    });
+
+    analyzeBtn.addEventListener("click", analyzeCurrentFile);
+    fileEl.addEventListener("change", () => {
+      if (!fileEl.files?.length) return;
+      analyzeCurrentFile().catch((err) => {
+        setStatus(`Analyze failed: ${err?.message || String(err)}`);
+      });
+    });
+
+    filterEl.addEventListener("change", rebuildList);
+    orderModeEl.addEventListener("change", rebuildList);
+
+    decodeVideoBtn.addEventListener("click", () => {
+      decodeSelectedVideoFrame().catch(async (err) => {
+        markDecodeException(selectedFrame(), err, "single-frame-button");
+        setStatus(`${formatVideoDecodeError(err)} (try tinyh264 fallback...)`);
+        console.error("video-decode-error", err);
+        if (err?.diagnostics) {
+          console.error("video-decode-diagnostics", err.diagnostics);
+          const chunk = err.diagnostics?.chunk || err.diagnostics?.decodePlan?.errorChunk;
+          if (chunk) console.table([chunk]);
+        }
+        setFailureSnapshotFromError(err, { context: "decodeVideo button" });
+        try {
+          await fallbackDecodeGopByMse(selectedFrame(), err);
+        } catch (fallbackErr) {
+          console.error("tinyh264-fallback-error", fallbackErr);
+          setStatus(`${formatVideoDecodeError(err)} | tinyh264 fallback failed: ${fallbackErr?.message || String(fallbackErr)}`);
+        }
+      });
+    });
+
+    playAudioBtn.addEventListener("click", async () => {
+      try {
+        const sf = selectedFrame();
+        if (!sf) throw new Error("No selected frame.");
+        if (sf._mediaType !== "audio") throw new Error("Selected frame is not audio.");
+        setStatus("Decoding/playing audio frame ...");
+        const out = await playAudioFrameWithWebAudio({
+          frame: sf._rawFrame,
+          mediaInfo: resultMap,
+          audioContext: currentAudioCtx,
+        });
+        currentAudioCtx = out.ctx;
+        setStatus(`Audio playing (${out.durationSec.toFixed(3)}s).`);
+      } catch (err) {
+        if (err?.diagnostics) {
+          console.error("audio-decode-diagnostics", err.diagnostics);
+        }
+        setStatus(`Audio play failed: ${err?.message || String(err)}`);
+      }
+    });
+    setSegStartBtn.addEventListener("click", () => {
+      const ts = getSelectedFramePtsSec();
+      if (typeof ts === "number") segStartEl.value = ts.toFixed(3);
+    });
+    setSegEndBtn.addEventListener("click", () => {
+      const ts = getSelectedFramePtsSec();
+      if (typeof ts === "number") segEndEl.value = ts.toFixed(3);
+    });
+    playSegVideoBtn.addEventListener("click", () => {
+      playVideoSegmentByPts().catch((err) => {
+        setStatus(`Segment video play failed: ${err?.message || String(err)}`);
+        setFailureSnapshotFromError(err, { context: "playSegVideo button" });
+      });
+    });
+    playSegAudioBtn.addEventListener("click", () => {
+      playAudioSegmentByPts().catch((err) => {
+        setStatus(`Segment audio play failed: ${err?.message || String(err)}`);
+      });
+    });
+    stopSegBtn.addEventListener("click", () => {
+      stopSegmentPlayback();
+      setStatus("Segment playback stopped.");
+    });
+    copyFailureBtn.addEventListener("click", async () => {
+      try {
+        const text = failureTextEl.value || "";
+        if (!text.trim()) {
+          setStatus("No failure text to copy.");
+          return;
+        }
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          failureTextEl.focus();
+          failureTextEl.select();
+          document.execCommand("copy");
+        }
+        setStatus("Failure snapshot copied.");
+      } catch (err) {
+        setStatus(`Copy failed: ${err?.message || String(err)}`);
+      }
+    });
+    clearFailureBtn.addEventListener("click", () => {
+      failureTextEl.value = "";
+      setStatus("Failure snapshot cleared.");
+    });
+
+    clearBtn.addEventListener("click", () => {
+      result = null;
+      resultMap = null;
+      currentFileBytes = null;
+      allFrames = [];
+      shownFrames = [];
+      selectedIndex = -1;
+      framesBodyEl.innerHTML = "";
+      selectedInfoEl.innerHTML = "";
+      selectedTreeEl.innerHTML = `<div class="field-empty">No details.</div>`;
+      hexWrapEl.innerHTML = "";
+      statsSummaryEl.innerHTML = "";
+      [intervalChartEl, bitrateChartEl, avSyncChartEl].forEach((c) => {
+        const ctx = c.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, c.width || 0, c.height || 0);
+      });
+      currentHexBytes = null;
+      currentHexBaseOffset = 0;
+      currentFieldRows = [];
+      activeFieldKey = null;
+      decodeExceptionFrameIndexes = new Set();
+      stopSegmentPlayback();
+      tinyDecoderGopRange = null;
+      libReleaseTinyH264Worker();
+      segStartEl.value = "";
+      segEndEl.value = "";
+      failureTextEl.value = "";
+      countEl.textContent = "frames: 0";
+      clearPlaybackCanvas();
+      setStatus("Cleared.");
+    });
+  </script>
+</body>
+</html>

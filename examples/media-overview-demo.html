@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>mediaOverview Demo</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b0f17;
+      --panel: #141b26;
+      --muted: #97a3b6;
+      --text: #e6edf7;
+      --accent: #5da8ff;
+      --border: #263041;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    p { margin: 0 0 16px; color: var(--muted); }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    input[type="file"] {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--panel);
+      color: var(--text);
+    }
+    input[type="text"], input[type="number"], select {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--panel);
+      color: var(--text);
+      min-width: 240px;
+    }
+    input[type="number"] { min-width: 90px; width: 110px; }
+    button {
+      border: 1px solid var(--border);
+      background: #1b2535;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .status {
+      min-height: 20px;
+      margin-bottom: 12px;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      color: var(--accent);
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 4px 8px;
+      font-size: 13px;
+    }
+    .k { color: var(--muted); }
+    .json {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      max-height: 50vh;
+      white-space: pre;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>mediaOverview Example Page</h1>
+    <p>Analyze from local file, HTTPS URL, or WS stream and render <code>formatSpecific.mediaOverview</code>.</p>
+
+    <div class="row">
+      <label for="mode">Source</label>
+      <select id="mode">
+        <option value="file">Local file</option>
+        <option value="https">HTTPS URL</option>
+        <option value="ws">WS stream</option>
+      </select>
+      <input id="url" type="text" placeholder="https://... or ws://..." />
+      <label for="wsSeconds">WS sec</label>
+      <input id="wsSeconds" type="number" value="10" min="1" max="120" />
+    </div>
+
+    <div class="toolbar">
+      <input id="file" type="file" />
+      <button id="analyze">Analyze</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div id="status" class="status">Ready. HTTPS requires CORS-enabled URL.</div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>General</h2>
+        <div id="general" class="kv"></div>
+      </section>
+      <section class="card">
+        <h2>Video</h2>
+        <div id="video" class="kv"></div>
+      </section>
+      <section class="card">
+        <h2>Audio</h2>
+        <div id="audio" class="kv"></div>
+      </section>
+      <section class="card">
+        <h2>Subtitle</h2>
+        <div id="subtitle" class="kv"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>mediaOverview JSON</h2>
+      <div id="json" class="json">{}</div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { analyzeByDetectedFormat } from "../lib/codec/analyzeByDetectedFormat.js";
+    import { collectWebSocketBinary } from "../lib/streaming/wsStreamCapture.js";
+
+    const fileInput = document.getElementById("file");
+    const modeEl = document.getElementById("mode");
+    const urlEl = document.getElementById("url");
+    const wsSecondsEl = document.getElementById("wsSeconds");
+    const analyzeBtn = document.getElementById("analyze");
+    const clearBtn = document.getElementById("clear");
+    const statusEl = document.getElementById("status");
+    const jsonEl = document.getElementById("json");
+    const generalEl = document.getElementById("general");
+    const videoEl = document.getElementById("video");
+    const audioEl = document.getElementById("audio");
+    const subtitleEl = document.getElementById("subtitle");
+
+    function valueText(v) {
+      if (v === null || v === undefined || v === "") return "-";
+      if (typeof v === "number" && Number.isFinite(v)) return String(v);
+      if (Array.isArray(v)) return v.join(", ");
+      return String(v);
+    }
+
+    function renderKV(root, obj, keys) {
+      const html = keys
+        .map((k) => `<div class="k">${k}</div><div>${valueText(obj?.[k])}</div>`)
+        .join("");
+      root.innerHTML = html || `<div class="k">empty</div><div>-</div>`;
+    }
+
+    function clearAll() {
+      generalEl.innerHTML = "";
+      videoEl.innerHTML = "";
+      audioEl.innerHTML = "";
+      subtitleEl.innerHTML = "";
+      jsonEl.textContent = "{}";
+      statusEl.textContent = "Cleared.";
+    }
+
+    async function loadBytesFromSource() {
+      const mode = modeEl.value;
+      if (mode === "file") {
+        const file = fileInput.files?.[0];
+        if (!file) throw new Error("Please choose a file first.");
+        const buffer = await file.arrayBuffer();
+        return {
+          bytes: new Uint8Array(buffer),
+          meta: {
+            fileName: file.name,
+            fileSize: file.size,
+            lastModified: file.lastModified,
+            fileType: file.type || null,
+          },
+          hint: file.name,
+        };
+      }
+      if (mode === "https") {
+        const url = (urlEl.value || "").trim();
+        if (!url) throw new Error("Please input HTTPS URL.");
+        if (!/^https?:\/\//i.test(url)) throw new Error("HTTPS mode needs http(s) URL.");
+        statusEl.textContent = `Fetching ${url} ...`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        const ab = await res.arrayBuffer();
+        return {
+          bytes: new Uint8Array(ab),
+          meta: {
+            fileName: url.split("/").pop() || url,
+            fileSize: ab.byteLength,
+            fileType: res.headers.get("content-type") || null,
+          },
+          hint: url,
+        };
+      }
+      if (mode === "ws") {
+        const url = (urlEl.value || "").trim();
+        if (!url) throw new Error("Please input WS URL.");
+        if (!/^wss?:\/\//i.test(url)) throw new Error("WS mode needs ws:// or wss:// URL.");
+        const sec = Math.max(1, Number(wsSecondsEl.value) || 10);
+        const out = await collectWebSocketBinary(url, {
+          fetchDurationSec: sec,
+          onProgress: (msg) => {
+            if (msg) statusEl.textContent = msg;
+          },
+        });
+        return {
+          bytes: out.bytes,
+          meta: {
+            fileName: out.streamUrl,
+            fileSize: out.bytes.byteLength,
+            fileType: "application/octet-stream",
+          },
+          hint: `${url} (${sec}s)`,
+        };
+      }
+      throw new Error(`Unsupported mode: ${mode}`);
+    }
+
+    async function analyzeSource() {
+      analyzeBtn.disabled = true;
+      try {
+        const { bytes, meta, hint } = await loadBytesFromSource();
+        statusEl.textContent = `Analyzing ${hint} ...`;
+        const result = await analyzeByDetectedFormat(bytes, {
+          fileMeta: meta,
+        });
+        const overview = result?.formatSpecific?.mediaOverview || {};
+
+        renderKV(generalEl, overview.general, [
+          "fileName", "fileType", "fileSize", "streams", "totalFrames", "noStreams", "fileWarnings",
+        ]);
+        renderKV(videoEl, overview.videoInfo, [
+          "streamIndex", "videoCodec", "resolution", "frameRate", "durationSec",
+          "profile", "level", "chroma", "bitDepth", "videoBitrate", "iFrames", "pFrames", "bFrames",
+        ]);
+        renderKV(audioEl, overview.audioInfo, [
+          "streamIndex", "audioCodec", "sampleRate", "channels", "channelLayout", "durationSec", "audioBitrate",
+        ]);
+        renderKV(subtitleEl, overview.subtitleInfo, ["streamIndex", "subtitleCodec"]);
+
+        jsonEl.textContent = JSON.stringify(overview, null, 2);
+        statusEl.textContent = `Done: detected ${result?.format?.formatName || "unknown"} (${hint}).`;
+      } catch (err) {
+        statusEl.textContent = `Analyze failed: ${err?.message || String(err)}`;
+      } finally {
+        analyzeBtn.disabled = false;
+      }
+    }
+
+    analyzeBtn.addEventListener("click", analyzeSource);
+    clearBtn.addEventListener("click", clearAll);
+  </script>
+</body>
+</html>
