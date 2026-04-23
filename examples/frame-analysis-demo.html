@@ -154,6 +154,8 @@
     <div class="toolbar">
       <input id="file" type="file" />
       <button id="analyze">Analyze</button>
+      <input id="sourceUrl" type="url" placeholder="http(s)://... or ws(s)://..." style="min-width:360px" />
+      <button id="analyzeUrl">Analyze URL</button>
       <button id="decodeVideo">Decode Video Frame</button>
       <button id="playAudio">Play Audio Frame</button>
       <label>Seg PTS(s)</label>
@@ -242,6 +244,7 @@
   <script type="module">
     import { analyzeByDetectedFormat } from "../lib/codec/analyzeByDetectedFormat.js";
     import { getFrames, getFilteredFrames } from "../lib/codec/multiFormatFrameAdapter.js";
+    import { collectWebSocketBinary } from "../lib/streaming/wsStreamCapture.js";
     import {
       parseAvcLengthPrefixedNalUnits,
       parseHevcLengthPrefixedNalUnits,
@@ -264,6 +267,8 @@
 
     const fileEl = document.getElementById("file");
     const analyzeBtn = document.getElementById("analyze");
+    const sourceUrlEl = document.getElementById("sourceUrl");
+    const analyzeUrlBtn = document.getElementById("analyzeUrl");
     const decodeVideoBtn = document.getElementById("decodeVideo");
     const playAudioBtn = document.getElementById("playAudio");
     const segStartEl = document.getElementById("segStart");
@@ -311,6 +316,31 @@
     let decodeExceptionFrameIndexes = new Set();
 
     function setStatus(text) { statusEl.textContent = text; }
+    function inferNameFromUrl(urlText) {
+      try {
+        const u = new URL(urlText);
+        const p = u.pathname || "";
+        const tail = p.split("/").filter(Boolean).pop();
+        return tail || u.hostname || "remote-stream.bin";
+      } catch {
+        return "remote-stream.bin";
+      }
+    }
+    function concatUint8(chunks, total) {
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        out.set(c, off);
+        off += c.length;
+      }
+      return out;
+    }
+    async function readBytesFromHttp(urlText) {
+      const res = await fetch(urlText, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const ab = await res.arrayBuffer();
+      return new Uint8Array(ab);
+    }
     function markDecodeException(frame, err, context = "decode") {
       const idx = Number(frame?.index);
       if (!Number.isFinite(idx)) return;
@@ -1496,56 +1526,100 @@
       setStatus(`Segment audio playing (${decoded.duration.toFixed(3)}s) with progress tracking.`);
     }
 
+    async function applyAnalyzeResult(bytes, fileMeta) {
+      currentFileBytes = bytes;
+      result = await analyzeByDetectedFormat(bytes, { fileMeta });
+      const format = result?.format?.formatName || "unknown";
+      resultMap = { [format]: result };
+      allFrames = getFrames(resultMap, format);
+      shownFrames = sortFramesByMode(allFrames, orderModeEl.value);
+      selectedIndex = shownFrames.length > 0 ? 0 : -1;
+      renderFrames();
+      const sf = selectedFrame();
+      renderSelectedInfo(sf);
+      renderHex(sf);
+      renderSelectedTree(sf);
+      renderStatsPanel();
+      const timeline = allFrames.map(getFrameTimeSec).filter((v) => typeof v === "number");
+      if (timeline.length > 0) {
+        const minTs = Math.min(...timeline);
+        const maxTs = Math.max(...timeline);
+        if (!segStartEl.value) segStartEl.value = minTs.toFixed(3);
+        if (!segEndEl.value) segEndEl.value = maxTs.toFixed(3);
+      }
+      libEnsureTinyH264WorkerReady()
+        .then(() => {
+          console.info("[tinyh264] warmup ready");
+        })
+        .catch((e) => {
+          console.warn("[tinyh264] warmup failed", e);
+        });
+      setStatus(`Done. format=${format}, frames=${allFrames.length}`);
+      if (sf && sf._mediaType === "video") {
+        await decodeSelectedVideoFrame();
+      }
+    }
     async function analyzeCurrentFile() {
       analyzeBtn.disabled = true;
+      analyzeUrlBtn.disabled = true;
       try {
         const f = fileEl.files?.[0];
         if (!f) throw new Error("Please select a media file.");
         setStatus(`Reading ${f.name} ...`);
         const bytes = new Uint8Array(await f.arrayBuffer());
-        currentFileBytes = bytes;
         setStatus(`Analyzing ${f.name} ...`);
-        result = await analyzeByDetectedFormat(bytes, {
-          fileMeta: {
-            fileName: f.name,
-            fileSize: f.size,
-            fileType: f.type || null,
-            lastModified: f.lastModified,
-          },
+        await applyAnalyzeResult(bytes, {
+          fileName: f.name,
+          fileSize: f.size,
+          fileType: f.type || null,
+          lastModified: f.lastModified,
         });
-        const format = result?.format?.formatName || "unknown";
-        resultMap = { [format]: result };
-        allFrames = getFrames(resultMap, format);
-        shownFrames = sortFramesByMode(allFrames, orderModeEl.value);
-        selectedIndex = shownFrames.length > 0 ? 0 : -1;
-        renderFrames();
-        const sf = selectedFrame();
-        renderSelectedInfo(sf);
-        renderHex(sf);
-        renderSelectedTree(sf);
-        renderStatsPanel();
-        const timeline = allFrames.map(getFrameTimeSec).filter((v) => typeof v === "number");
-        if (timeline.length > 0) {
-          const minTs = Math.min(...timeline);
-          const maxTs = Math.max(...timeline);
-          if (!segStartEl.value) segStartEl.value = minTs.toFixed(3);
-          if (!segEndEl.value) segEndEl.value = maxTs.toFixed(3);
-        }
-        libEnsureTinyH264WorkerReady()
-          .then(() => {
-            console.info("[tinyh264] warmup ready");
-          })
-          .catch((e) => {
-            console.warn("[tinyh264] warmup failed", e);
-          });
-        setStatus(`Done. format=${format}, frames=${allFrames.length}`);
-        if (sf && sf._mediaType === "video") {
-          await decodeSelectedVideoFrame();
-        }
       } catch (err) {
         setStatus(`Analyze failed: ${err?.message || String(err)}`);
       } finally {
         analyzeBtn.disabled = false;
+        analyzeUrlBtn.disabled = false;
+      }
+    }
+    async function analyzeFromUrl() {
+      analyzeBtn.disabled = true;
+      analyzeUrlBtn.disabled = true;
+      try {
+        const urlText = String(sourceUrlEl?.value || "").trim();
+        if (!urlText) throw new Error("Please input a URL.");
+        const u = new URL(urlText);
+        let bytes = null;
+        if (u.protocol === "http:" || u.protocol === "https:") {
+          setStatus(`Fetching ${urlText} ...`);
+          bytes = await readBytesFromHttp(urlText);
+        } else if (u.protocol === "ws:" || u.protocol === "wss:") {
+          setStatus(`Connecting ${urlText} ...`);
+          const out = await collectWebSocketBinary(urlText, {
+            fetchDurationSec: 10,
+            onProgress: (msg) => {
+              if (msg) setStatus(msg);
+            },
+          });
+          bytes = out?.bytes instanceof Uint8Array ? out.bytes : null;
+        } else {
+          throw new Error(`Unsupported URL protocol: ${u.protocol}`);
+        }
+        if (!(bytes instanceof Uint8Array) || bytes.length <= 0) {
+          throw new Error("No bytes received from URL source.");
+        }
+        setStatus(`Analyzing remote source ${urlText} (${bytes.length} bytes) ...`);
+        await applyAnalyzeResult(bytes, {
+          fileName: inferNameFromUrl(urlText),
+          fileSize: bytes.length,
+          fileType: "application/octet-stream",
+          sourceUrl: urlText,
+          fetchedAt: Date.now(),
+        });
+      } catch (err) {
+        setStatus(`Analyze URL failed: ${err?.message || String(err)}`);
+      } finally {
+        analyzeBtn.disabled = false;
+        analyzeUrlBtn.disabled = false;
       }
     }
 
@@ -1594,6 +1668,11 @@
     });
 
     analyzeBtn.addEventListener("click", analyzeCurrentFile);
+    analyzeUrlBtn.addEventListener("click", () => {
+      analyzeFromUrl().catch((err) => {
+        setStatus(`Analyze URL failed: ${err?.message || String(err)}`);
+      });
+    });
     fileEl.addEventListener("change", () => {
       if (!fileEl.files?.length) return;
       analyzeCurrentFile().catch((err) => {

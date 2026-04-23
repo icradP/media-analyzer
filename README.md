@@ -9,6 +9,15 @@
 
 本目录为纯源码与静态示例，不依赖 npm。
 
+## 仓库与在线示例
+
+- GitHub 仓库：[icradP/media-analyzer](https://github.com/icradP/media-analyzer/)
+- 在线示例首页（GitHub Pages）：[https://icradp.github.io/media-analyzer/](https://icradp.github.io/media-analyzer/)
+- 在线示例（media-overview）：[https://icradp.github.io/media-analyzer/examples/media-overview-demo.html](https://icradp.github.io/media-analyzer/examples/media-overview-demo.html)
+- 在线示例（frame-analysis）：[https://icradp.github.io/media-analyzer/examples/frame-analysis-demo.html](https://icradp.github.io/media-analyzer/examples/frame-analysis-demo.html)
+
+> 若页面暂时 404，请先在仓库 `Settings -> Pages` 开启 GitHub Pages（分支可选 `master` 或 `main`，目录选 `/ (root)`）。
+
 ## 使用示例
 
 ### 1) 打开示例页面
