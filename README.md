@@ -16,7 +16,23 @@
 - 在线示例（media-overview）：[https://icradp.github.io/media-analyzer/examples/media-overview-demo.html](https://icradp.github.io/media-analyzer/examples/media-overview-demo.html)
 - 在线示例（frame-analysis）：[https://icradp.github.io/media-analyzer/examples/frame-analysis-demo.html](https://icradp.github.io/media-analyzer/examples/frame-analysis-demo.html)
 
-> 若页面暂时 404，请先在仓库 `Settings -> Pages` 开启 GitHub Pages（分支可选 `master` 或 `main`，目录选 `/ (root)`）。
+## 测试解析通过项
+
+- [x] ts(h264/aac)
+- [ ] ts(h265/aac)
+- [ ] ts(h264/mp3)
+- [ ] ts(h265/mp3)
+- [x] mp4(h264/aac)
+- [x] mp4(h265/aac)
+- [ ] mp4(h264/mp3)
+- [ ] mp4(h265/mp3)
+- [ ] flv(h264/aac)
+- [ ] flv(h265/aac)
+- [ ] flv(h264/mp3)
+- [ ] ps(h264/aac)
+- [ ] ps(h265/aac)
+- [ ] 裸流(h264)
+- [ ] 裸流(h265)
 
 ## 使用示例
 
