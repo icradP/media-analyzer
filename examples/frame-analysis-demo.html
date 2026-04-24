@@ -246,12 +246,10 @@
     import { getFrames, getFilteredFrames } from "../lib/codec/multiFormatFrameAdapter.js";
     import { collectWebSocketBinary } from "../lib/streaming/wsStreamCapture.js";
     import {
-      parseAvcLengthPrefixedNalUnits,
-      parseHevcLengthPrefixedNalUnits,
-    } from "../lib/codec/index.js";
-    import {
       computeHexBytesPerLine,
       buildHexViewRows,
+      pickHexSourceBytesForInspector,
+      buildFrameDetailForInspector,
       buildVideoDecodePlan,
       buildAudioPlaybackBytes,
       buildAudioPlaybackBytesForFrameRange,
@@ -260,6 +258,7 @@
       playAudioFrameWithWebAudio,
       sliceFrameBytes,
       decodeVideoFrameWithStrategies as libDecodeVideoFrameWithStrategies,
+      resolveVideoDecoderCodecForStream,
       decodeGopByMseFallback as libDecodeGopByMseFallback,
       ensureTinyH264WorkerReady as libEnsureTinyH264WorkerReady,
       releaseTinyH264Worker as libReleaseTinyH264Worker,
@@ -353,83 +352,7 @@
       });
     }
     function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
-    function toHex2(v) {
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) return null;
-      return Math.max(0, Math.min(255, n)).toString(16).toUpperCase().padStart(2, "0");
-    }
-    function asU8(v) {
-      if (!v) return null;
-      if (v instanceof Uint8Array) return v;
-      if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
-      if (v instanceof ArrayBuffer) return new Uint8Array(v);
-      if (Array.isArray(v)) return Uint8Array.from(v);
-      return null;
-    }
-    function avcCodecFromSps(vStream) {
-      const sps0 = asU8(vStream?.decoderConfig?.sps?.[0]);
-      if (!(sps0 instanceof Uint8Array) || sps0.length < 4) return null;
-      // SPS RBSP starts with NAL header (0x67), then profile_idc / constraint_set flags / level_idc.
-      const profileIdc = toHex2(sps0[1]);
-      const profileCompat = toHex2(sps0[2]);
-      const levelIdc = toHex2(sps0[3]);
-      if (!profileIdc || !profileCompat || !levelIdc) return null;
-      return `avc1.${profileIdc}${profileCompat}${levelIdc}`;
-    }
-    function codecCandidatesForStream(vStream) {
-      const name = String(vStream?.codecName || "").toLowerCase();
-      const cands = [];
-      const push = (x) => { if (x && !cands.includes(x)) cands.push(x); };
-      const profileHex = toHex2(vStream?.profile);
-      const levelHex = toHex2(vStream?.level);
-
-      if (name.includes("264") || name.includes("avc") || name === "avc1" || name === "avc3") {
-        push(avcCodecFromSps(vStream));
-        if (profileHex && levelHex) {
-          push(`avc1.${profileHex}00${levelHex}`);
-          push(`avc1.${profileHex}${levelHex}`);
-        }
-        push("avc1.64001F");
-        push("avc1.4D401F");
-        push("avc1.42001E");
-      }
-      if (name.includes("265") || name.includes("hevc") || name === "hvc1" || name === "hev1") {
-        push("hvc1.1.6.L93.B0");
-        push("hev1.1.6.L93.B0");
-        push("hvc1.1.6.L120.B0");
-        push("hev1.1.6.L120.B0");
-      }
-      return cands;
-    }
-    async function resolveVideoDecoderCodec(vStream) {
-      const cands = codecCandidatesForStream(vStream);
-      if (cands.length === 0) return null;
-      if (typeof VideoDecoder === "undefined" || typeof VideoDecoder.isConfigSupported !== "function") {
-        return cands[0];
-      }
-      for (const codec of cands) {
-        try {
-          const check = await VideoDecoder.isConfigSupported({ codec });
-          if (check?.supported) return codec;
-        } catch {
-          // try next candidate
-        }
-      }
-      return cands[0];
-    }
-    function codecRetryCandidates(codecString) {
-      const out = [];
-      const push = (v) => { if (v && !out.includes(v)) out.push(v); };
-      const s = String(codecString || "");
-      push(s);
-      if (s.startsWith("avc1.")) push(`avc3.${s.slice(5)}`);
-      if (s.startsWith("avc3.")) push(`avc1.${s.slice(5)}`);
-      if (s === "avc1" || s === "avc3") {
-        push("avc1.42C029");
-        push("avc3.42C029");
-      }
-      return out;
-    }
+    // codec selection/retry strategies are provided by lib/browser/videoDecodeOrchestrator.js
     function findGopRangeByFrame(targetFrame) {
       const vids = (allFrames || [])
         .filter((f) => f._mediaType === "video")
@@ -618,63 +541,6 @@
       }
       return { payload, baseOffset };
     }
-    function parseNalusFromFrame(rf) {
-      if (!rf || rf.mediaType !== "video") return { nalus: [], fieldOffsets: [] };
-      const stream = getVideoStreamByIndex(rf.streamIndex);
-      const codecName = String(rf.codecName || stream?.codecName || "").toLowerCase();
-      const { payload, baseOffset } = extractPayloadForNaluParse(rf);
-      if (!(payload instanceof Uint8Array) || payload.length === 0) return { nalus: [], fieldOffsets: [] };
-      const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-      const fieldOffsets = {};
-      try {
-        if (codecName.includes("264") || codecName.includes("avc")) {
-          const lsmo = stream?.decoderConfig?.lengthSizeMinusOne ?? 3;
-          const parsed = parseAvcLengthPrefixedNalUnits(
-            dv,
-            0,
-            payload.length,
-            lsmo,
-            fieldOffsets,
-            stream?.decoderConfig || null
-          );
-          return { nalus: Array.isArray(parsed) ? parsed : [], fieldOffsets: normalizeFieldOffsets(fieldOffsets, baseOffset) };
-        }
-        if (codecName.includes("265") || codecName.includes("hevc") || codecName.includes("hev1") || codecName.includes("hvc1")) {
-          const lsmo = stream?.decoderConfig?.lengthSizeMinusOne ?? 3;
-          const parsed = parseHevcLengthPrefixedNalUnits(
-            dv,
-            0,
-            payload.length,
-            lsmo,
-            fieldOffsets,
-            stream?.decoderConfig || null
-          );
-          return { nalus: Array.isArray(parsed) ? parsed : [], fieldOffsets: normalizeFieldOffsets(fieldOffsets, baseOffset) };
-        }
-      } catch (err) {
-        console.warn("parseNalusFromFrame failed", err);
-      }
-      return { nalus: [], fieldOffsets: [] };
-    }
-    function pickKeys(obj, keys) {
-      const out = {};
-      for (const k of keys) {
-        if (obj && obj[k] !== undefined) out[k] = obj[k];
-      }
-      return out;
-    }
-    function normalizeFieldOffsets(fieldOffsets, baseOffset = 0) {
-      if (!fieldOffsets || typeof fieldOffsets !== "object") return [];
-      const rows = [];
-      for (const [k, v] of Object.entries(fieldOffsets)) {
-        if (!v || typeof v !== "object") continue;
-        if (typeof v.offset === "number" && typeof v.length === "number") {
-          rows.push({ field: k, offset: v.offset + baseOffset, length: v.length });
-        }
-      }
-      rows.sort((a, b) => a.offset - b.offset);
-      return rows.slice(0, 200);
-    }
     function setActiveFieldByKey(key) {
       activeFieldKey = key || null;
       renderSelectedTree(selectedFrame());
@@ -688,52 +554,10 @@
       return null;
     }
     function buildFrameDetail(frame) {
-      if (!frame || !frame._rawFrame) return null;
-      const rf = frame._rawFrame;
-      const fs = rf.formatSpecific || {};
-      let parsedNalus = collectNaluItems(fs);
-      let parsedFieldOffsets = normalizeFieldOffsets(fs.fieldOffsets);
-      if (parsedNalus.length === 0 && rf.mediaType === "video") {
-        const reparsed = parseNalusFromFrame(rf);
-        if (reparsed.nalus.length > 0) parsedNalus = reparsed.nalus;
-        if (reparsed.fieldOffsets.length > 0) parsedFieldOffsets = reparsed.fieldOffsets;
-      }
-      const naluItems = parsedNalus.map((n, i) => ({
-        index: i,
-        nal_unit_type: n.nal_unit_type ?? n._nal_unit_type_value ?? null,
-        naluLength: n.naluLength ?? n.totalLength ?? null,
-        slice_type: n.slice_type ?? n._slice_type_value ?? null,
-        frame_num: n.frame_num ?? null,
-        poc: n.pic_order_cnt_lsb ?? n.slice_pic_order_cnt_lsb ?? null,
-      }));
-      const flvTag =
-        fs.tagType !== undefined || fs.tagTypeName !== undefined
-          ? pickKeys(fs, [
-              "tagType",
-              "tagTypeName",
-              "dataSize",
-              "timestamp",
-              "timestampFull",
-              "isExHeader",
-              "packetType",
-              "fourCC",
-              "codecId",
-              "mediaType",
-              "pictureType",
-              "offset",
-              "byteLength",
-            ])
-          : null;
-      return {
-        frameIndex: rf.index ?? frame.index ?? null,
-        mediaType: rf.mediaType ?? frame._mediaType ?? null,
-        codecName: rf.codecName ?? frame._codecFormat ?? null,
-        time: pickKeys(rf, ["pts", "dts", "ptsTime", "dtsTime", "timestamp"]),
-        naluCount: naluItems.length,
-        nalus: naluItems,
-        flvTag,
-        fieldOffsets: parsedFieldOffsets,
-      };
+      return buildFrameDetailForInspector(frame, result);
+    }
+    function pickHexSourceBytes(rf, primaryBytes) {
+      return pickHexSourceBytesForInspector(rf, primaryBytes);
     }
     function renderSelectedTree(frame) {
       const detail = buildFrameDetail(frame);
@@ -756,6 +580,11 @@
         .join("");
       const flvRows = detail.flvTag
         ? Object.entries(detail.flvTag)
+            .map(([k, v]) => `<div class="tree-line"><span class="tree-key">${esc(k)}</span>${esc(v)}</div>`)
+            .join("")
+        : `<div class="tree-line">-</div>`;
+      const tsPesRows = detail.tsPes
+        ? Object.entries(detail.tsPes)
             .map(([k, v]) => `<div class="tree-line"><span class="tree-key">${esc(k)}</span>${esc(v)}</div>`)
             .join("")
         : `<div class="tree-line">-</div>`;
@@ -785,6 +614,10 @@
         <details open>
           <summary>FLV Tag</summary>
           ${flvRows}
+        </details>
+        <details open>
+          <summary>TS PES</summary>
+          ${tsPesRows}
         </details>
         <details open>
           <summary>Field Offsets (${detail.fieldOffsets.length})</summary>
@@ -819,7 +652,7 @@
       hexWrapEl.innerHTML = "";
       if (!frame || !result) return;
       const primaryBytes = result?.formatSpecific?.fileData || null;
-      const bytes = sliceFrameBytes(frame._rawFrame, primaryBytes);
+      const bytes = pickHexSourceBytes(frame._rawFrame, primaryBytes);
       currentHexBytes = bytes instanceof Uint8Array ? bytes : null;
       const fs = frame?._rawFrame?.formatSpecific || {};
       currentHexBaseOffset = Number.isFinite(frame?._rawFrame?.offset)
@@ -886,128 +719,7 @@
       ].filter(Boolean);
       return parts.join(" | ");
     }
-    function detectAvccLengthSize(bytes) {
-      if (!(bytes instanceof Uint8Array) || bytes.length < 5) return 4;
-      for (const n of [4, 2, 1, 3]) {
-        let off = 0;
-        let ok = false;
-        while (off + n <= bytes.length) {
-          let len = 0;
-          for (let i = 0; i < n; i++) len = (len << 8) | bytes[off + i];
-          off += n;
-          if (len <= 0 || off + len > bytes.length) {
-            ok = false;
-            break;
-          }
-          off += len;
-          ok = true;
-          if (off === bytes.length) return n;
-        }
-        if (ok && off === bytes.length) return n;
-      }
-      return 4;
-    }
-    function splitAvccNalus(bytes, lengthSize = 4) {
-      const out = [];
-      if (!(bytes instanceof Uint8Array) || bytes.length <= lengthSize) return out;
-      let off = 0;
-      while (off + lengthSize <= bytes.length) {
-        let len = 0;
-        for (let i = 0; i < lengthSize; i++) len = (len << 8) | bytes[off + i];
-        off += lengthSize;
-        if (len <= 0 || off + len > bytes.length) return [];
-        out.push(bytes.subarray(off, off + len));
-        off += len;
-      }
-      if (off !== bytes.length) return [];
-      return out;
-    }
-    function joinAvccNalus(nalus, lengthSize = 4) {
-      const arr = Array.isArray(nalus) ? nalus.filter((n) => n instanceof Uint8Array && n.length > 0) : [];
-      const total = arr.reduce((s, n) => s + lengthSize + n.length, 0);
-      const out = new Uint8Array(total);
-      let off = 0;
-      for (const nalu of arr) {
-        let len = nalu.length;
-        for (let i = lengthSize - 1; i >= 0; i--) {
-          out[off + i] = len & 0xff;
-          len >>>= 8;
-        }
-        off += lengthSize;
-        out.set(nalu, off);
-        off += nalu.length;
-      }
-      return out;
-    }
-    function h264NalType(nalu) {
-      if (!(nalu instanceof Uint8Array) || nalu.length < 1) return -1;
-      return nalu[0] & 0x1f;
-    }
-    function cloneEncodedFrames(frames) {
-      return (Array.isArray(frames) ? frames : []).map((f) => ({
-        type: f?.type === "key" ? "key" : "delta",
-        data: f?.data instanceof Uint8Array ? f.data.slice(0) : new Uint8Array(0),
-      }));
-    }
-    function buildDecodeAttempts({ plan, codecFamily }) {
-      const base = cloneEncodedFrames(plan?.encodedFrames);
-      const attempts = [
-        { name: "original", encodedFrames: base, description: plan?.description || null },
-      ];
-      attempts.push({
-        name: "original-no-description",
-        encodedFrames: cloneEncodedFrames(base),
-        description: null,
-      });
-      if (codecFamily !== "h264" || !base.length) return attempts;
-      const first = base[0]?.data;
-      const lengthSize = detectAvccLengthSize(first);
-      const withoutAud = cloneEncodedFrames(base).map((f) => {
-        const nalus = splitAvccNalus(f.data, lengthSize);
-        if (!nalus.length) return f;
-        const kept = nalus.filter((n) => h264NalType(n) !== 9);
-        if (!kept.length) return f;
-        return { ...f, data: joinAvccNalus(kept, lengthSize) };
-      });
-      attempts.push({
-        name: "drop-aud",
-        encodedFrames: withoutAud,
-        description: plan?.description || null,
-      });
-      attempts.push({
-        name: "drop-aud-no-description",
-        encodedFrames: cloneEncodedFrames(withoutAud),
-        description: null,
-      });
-      const firstNalus = splitAvccNalus(first, lengthSize);
-      if (firstNalus.length) {
-        const sps = firstNalus.find((n) => h264NalType(n) === 7) || null;
-        const pps = firstNalus.find((n) => h264NalType(n) === 8) || null;
-        const idr = firstNalus.find((n) => h264NalType(n) === 5) || null;
-        const idrOnly = idr ? joinAvccNalus([idr], lengthSize) : null;
-        const inband = (sps && pps && idr) ? joinAvccNalus([sps, pps, idr], lengthSize) : null;
-        if (idrOnly) {
-          attempts.push({
-            name: "idr-only-no-description",
-            encodedFrames: [{ type: "key", data: idrOnly }],
-            description: null,
-          });
-        }
-        if (inband) {
-          attempts.push({
-            name: "inband-sps-pps-idr-no-description",
-            encodedFrames: [{ type: "key", data: inband }],
-            description: null,
-          });
-          attempts.push({
-            name: "inband-sps-pps-idr-with-description",
-            encodedFrames: [{ type: "key", data: inband }],
-            description: plan?.description || null,
-          });
-        }
-      }
-      return attempts;
-    }
+    // AVCC/NAL retry helper logic lives in lib/browser/videoDecodeOrchestrator.js
     function toPrettyJson(v) {
       try {
         return JSON.stringify(v ?? null, null, 2);
@@ -1407,7 +1119,7 @@
       const targetVideoFrames = getFramesBySegment("video", startSec, endSec);
       if (!targetVideoFrames.length) throw new Error("No video frames in selected segment.");
       const vStream = (result?.streams || []).find((s) => s.codecType === "video");
-      const codecString = await resolveVideoDecoderCodec(vStream);
+      const codecString = await resolveVideoDecoderCodecForStream(vStream);
       if (!codecString) throw new Error(`Unsupported codecName for WebCodecs: ${vStream?.codecName || "unknown"}`);
       const wallStart = performance.now();
       const segmentPtsStart = getFrameTimeSec(targetVideoFrames[0]) || startSec;
