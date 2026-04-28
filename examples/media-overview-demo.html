@@ -129,6 +129,7 @@
     <div class="toolbar">
       <input id="file" type="file" />
       <button id="analyze">Analyze</button>
+      <button id="save" disabled>Save File</button>
       <button id="clear">Clear</button>
     </div>
     <div id="status" class="status">Ready. HTTPS requires CORS-enabled URL.</div>
@@ -160,13 +161,18 @@
 
   <script type="module">
     import { analyzeByDetectedFormat } from "../lib/codec/analyzeByDetectedFormat.js";
-    import { collectWebSocketBinary } from "../lib/streaming/wsStreamCapture.js";
+    import {
+      buildCapturedMediaFileName,
+      collectWebSocketBinary,
+      downloadBytesAsFile,
+    } from "../lib/streaming/wsStreamCapture.js";
 
     const fileInput = document.getElementById("file");
     const modeEl = document.getElementById("mode");
     const urlEl = document.getElementById("url");
     const wsSecondsEl = document.getElementById("wsSeconds");
     const analyzeBtn = document.getElementById("analyze");
+    const saveBtn = document.getElementById("save");
     const clearBtn = document.getElementById("clear");
     const statusEl = document.getElementById("status");
     const jsonEl = document.getElementById("json");
@@ -174,6 +180,10 @@
     const videoEl = document.getElementById("video");
     const audioEl = document.getElementById("audio");
     const subtitleEl = document.getElementById("subtitle");
+
+    let currentBytes = null;
+    let currentDownloadName = "";
+    let currentMimeType = "application/octet-stream";
 
     function valueText(v) {
       if (v === null || v === undefined || v === "") return "-";
@@ -195,6 +205,10 @@
       audioEl.innerHTML = "";
       subtitleEl.innerHTML = "";
       jsonEl.textContent = "{}";
+      currentBytes = null;
+      currentDownloadName = "";
+      currentMimeType = "application/octet-stream";
+      saveBtn.disabled = true;
       statusEl.textContent = "Cleared.";
     }
 
@@ -229,6 +243,7 @@
             fileName: url.split("/").pop() || url,
             fileSize: ab.byteLength,
             fileType: res.headers.get("content-type") || null,
+            sourceUrl: url,
           },
           hint: url,
         };
@@ -250,6 +265,8 @@
             fileName: out.streamUrl,
             fileSize: out.bytes.byteLength,
             fileType: "application/octet-stream",
+            sourceUrl: out.streamUrl,
+            fetchedAt: Date.now(),
           },
           hint: `${url} (${sec}s)`,
         };
@@ -262,6 +279,15 @@
       try {
         const { bytes, meta, hint } = await loadBytesFromSource();
         statusEl.textContent = `Analyzing ${hint} ...`;
+        currentBytes = bytes;
+        currentDownloadName = buildCapturedMediaFileName({
+          bytes,
+          fileName: meta?.fileName,
+          sourceUrl: meta?.sourceUrl || hint,
+          prefix: "media-overview-capture",
+        });
+        currentMimeType = meta?.fileType || "application/octet-stream";
+        saveBtn.disabled = false;
         const result = await analyzeByDetectedFormat(bytes, {
           fileMeta: meta,
         });
@@ -289,6 +315,14 @@
     }
 
     analyzeBtn.addEventListener("click", analyzeSource);
+    saveBtn.addEventListener("click", () => {
+      try {
+        const out = downloadBytesAsFile(currentBytes, currentDownloadName, currentMimeType);
+        statusEl.textContent = `Saved download: ${out.fileName} (${out.size} bytes).`;
+      } catch (err) {
+        statusEl.textContent = `Save failed: ${err?.message || String(err)}`;
+      }
+    });
     clearBtn.addEventListener("click", clearAll);
   </script>
 </body>

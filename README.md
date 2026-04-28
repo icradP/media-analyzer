@@ -12,6 +12,7 @@
 ## 架构文档
 
 - [项目架构与逻辑](./docs/architecture.md)
+- [架构复核与当前缺陷](./docs/architecture-review.md)
 
 ## 仓库与在线示例
 

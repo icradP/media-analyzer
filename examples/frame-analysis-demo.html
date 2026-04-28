@@ -156,6 +156,7 @@
       <button id="analyze">Analyze</button>
       <input id="sourceUrl" type="url" placeholder="http(s)://... or ws(s)://..." style="min-width:360px" />
       <button id="analyzeUrl">Analyze URL</button>
+      <button id="saveCapture" disabled>Save File</button>
       <button id="decodeVideo">Decode Video Frame</button>
       <button id="playAudio">Play Audio Frame</button>
       <label>Seg PTS(s)</label>
@@ -244,7 +245,11 @@
   <script type="module">
     import { analyzeByDetectedFormat } from "../lib/codec/analyzeByDetectedFormat.js";
     import { getFrames, getFilteredFrames } from "../lib/codec/multiFormatFrameAdapter.js";
-    import { collectWebSocketBinary } from "../lib/streaming/wsStreamCapture.js";
+    import {
+      buildCapturedMediaFileName,
+      collectWebSocketBinary,
+      downloadBytesAsFile,
+    } from "../lib/streaming/wsStreamCapture.js";
     import {
       computeHexBytesPerLine,
       buildHexViewRows,
@@ -267,6 +272,7 @@
     const analyzeBtn = document.getElementById("analyze");
     const sourceUrlEl = document.getElementById("sourceUrl");
     const analyzeUrlBtn = document.getElementById("analyzeUrl");
+    const saveCaptureBtn = document.getElementById("saveCapture");
     const decodeVideoBtn = document.getElementById("decodeVideo");
     const playAudioBtn = document.getElementById("playAudio");
     const segStartEl = document.getElementById("segStart");
@@ -297,6 +303,8 @@
     let result = null;
     let resultMap = null;
     let currentFileBytes = null;
+    let currentSourceMeta = null;
+    let currentDownloadName = "";
     let allFrames = [];
     let shownFrames = [];
     let selectedIndex = -1;
@@ -1243,6 +1251,14 @@
 
     async function applyAnalyzeResult(bytes, fileMeta) {
       currentFileBytes = bytes;
+      currentSourceMeta = fileMeta || {};
+      currentDownloadName = buildCapturedMediaFileName({
+        bytes,
+        fileName: currentSourceMeta.fileName,
+        sourceUrl: currentSourceMeta.sourceUrl,
+        prefix: "frame-analysis-capture",
+      });
+      saveCaptureBtn.disabled = false;
       result = await analyzeByDetectedFormat(bytes, { fileMeta });
       const format = result?.format?.formatName || "unknown";
       resultMap = { [format]: result };
@@ -1375,6 +1391,18 @@
         setStatus(`Analyze URL failed: ${err?.message || String(err)}`);
       });
     });
+    saveCaptureBtn.addEventListener("click", () => {
+      try {
+        const out = downloadBytesAsFile(
+          currentFileBytes,
+          currentDownloadName,
+          currentSourceMeta?.fileType || "application/octet-stream",
+        );
+        setStatus(`Saved download: ${out.fileName} (${out.size} bytes).`);
+      } catch (err) {
+        setStatus(`Save failed: ${err?.message || String(err)}`);
+      }
+    });
     fileEl.addEventListener("change", () => {
       if (!fileEl.files?.length) return;
       analyzeCurrentFile().catch((err) => {
@@ -1463,6 +1491,9 @@
       result = null;
       resultMap = null;
       currentFileBytes = null;
+      currentSourceMeta = null;
+      currentDownloadName = "";
+      saveCaptureBtn.disabled = true;
       allFrames = [];
       shownFrames = [];
       selectedIndex = -1;
