@@ -262,11 +262,11 @@
       decodeAudioFramesToBufferWithWebAudio,
       sliceFrameBytes,
       decodeVideoFrameWithStrategies as libDecodeVideoFrameWithStrategies,
-      resolveVideoDecoderCodecForStream,
       decodeGopByMseFallback as libDecodeGopByMseFallback,
       ensureTinyH264WorkerReady as libEnsureTinyH264WorkerReady,
       releaseTinyH264Worker as libReleaseTinyH264Worker,
     } from "../lib/browser/index.js";
+    import { VideoSegmentPlayer } from "../lib/player/index.js";
 
     const fileEl = document.getElementById("file");
     const analyzeBtn = document.getElementById("analyze");
@@ -317,6 +317,7 @@
     let activeSegmentAudioSources = [];
     let activeSegmentAudioProgressTimer = null;
     let activeAudioWaveformAnimId = 0;
+    let activeVideoSegmentPlayer = null;
     let playingFrameIndex = null;
     let tinyDecoderGopRange = null;
     let decodeExceptionFrameIndexes = new Set();
@@ -782,6 +783,10 @@
     }
     function stopSegmentPlayback() {
       segmentPlayToken += 1;
+      if (activeVideoSegmentPlayer) {
+        activeVideoSegmentPlayer.stop();
+        activeVideoSegmentPlayer = null;
+      }
       if (activeSegmentAudioProgressTimer) {
         clearInterval(activeSegmentAudioProgressTimer);
         activeSegmentAudioProgressTimer = null;
@@ -1139,59 +1144,36 @@
         recordFailureSnapshot: true,
       });
     }
-    function isFlvVideoConfigFrameWrapper(frame) {
-      const fs = frame?._rawFrame?.formatSpecific || {};
-      if (Number(fs?._avcPacketType_value) === 0) return true;
-      if (Number(fs?._hevcPacketType_value) === 0) return true;
-      if (Number(fs?._isExHeader_value) === 1 && Number(fs?._packetType_value) === 0) return true;
-      return false;
-    }
     async function playVideoSegmentByPts() {
       stopSegmentPlayback();
       const token = segmentPlayToken;
       const { startSec, endSec } = getSegmentBoundsSec();
       const allTargetVideoFrames = getFramesBySegment("video", startSec, endSec);
       if (!allTargetVideoFrames.length) throw new Error("No video frames in selected segment.");
-      // Skip FLV sequence-header / Enhanced-FLV config frames: they are not
-      // decodable pictures and their pts is typically 0, which would otherwise
-      // anchor the wall-clock baseline far before the first real picture and
-      // freeze playback on the first frame.
-      const targetVideoFrames = allTargetVideoFrames.filter((f) => !isFlvVideoConfigFrameWrapper(f));
-      if (!targetVideoFrames.length) {
-        throw new Error("Segment contains only FLV sequence headers, no decodable picture.");
-      }
-      const skippedConfigCount = allTargetVideoFrames.length - targetVideoFrames.length;
       const vStream = (result?.streams || []).find((s) => s.codecType === "video");
-      const codecString = await resolveVideoDecoderCodecForStream(vStream);
-      if (!codecString) throw new Error(`Unsupported codecName for WebCodecs: ${vStream?.codecName || "unknown"}`);
-      const wallStart = performance.now();
-      const firstRealPts = getFrameTimeSec(targetVideoFrames[0]);
-      const segmentPtsStart = typeof firstRealPts === "number" ? firstRealPts : startSec;
-      setStatus(`Segment video play: frames=${targetVideoFrames.length}${skippedConfigCount ? ` (skipped ${skippedConfigCount} config tags)` : ""}, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}], baseline=${segmentPtsStart.toFixed(3)}s`);
-      for (let i = 0; i < targetVideoFrames.length; i++) {
-        if (token !== segmentPlayToken) return;
-        const f = targetVideoFrames[i];
-        syncPlaybackCursorByGlobalFrameIndex(f?.index, { scroll: true });
-        const pts = getFrameTimeSec(f);
-        if (typeof pts !== "number") continue;
-        const due = wallStart + Math.max(0, (pts - segmentPtsStart) * 1000);
-        const waitMs = due - performance.now();
-        if (waitMs > 1) await new Promise((r) => setTimeout(r, waitMs));
-        if (token !== segmentPlayToken) return;
-        const flowResult = await runVideoFrameDecodeFlow(f, {
-          context: `segment-frame[${f?.index ?? i}]`,
-          recordFailureSnapshot: false,
-        });
-        if (flowResult?.mode === "failed") {
-          // helper already updated status / marked exception; continue with next frame.
-          continue;
-        }
-      }
-      if (token === segmentPlayToken) {
-        playingFrameIndex = null;
-        renderFrames();
-        setStatus("Segment video play done.");
-      }
+      activeVideoSegmentPlayer = new VideoSegmentPlayer({
+        mediaInfo: resultMap,
+        stream: vStream,
+        canvas: canvasEl,
+        onStatus: setStatus,
+        onFrame: (item) => {
+          if (token !== segmentPlayToken) return;
+          const frameIndex = Number(item?.frameIndex);
+          if (!Number.isFinite(frameIndex)) return;
+          syncPlaybackCursorByGlobalFrameIndex(frameIndex, { scroll: false });
+        },
+        onError: (err) => {
+          console.error("segment-video-player-error", err);
+        },
+      });
+      await activeVideoSegmentPlayer.playSegment({
+        startSec,
+        endSec,
+        frames: allFrames,
+      });
+      if (token !== segmentPlayToken) return;
+      playingFrameIndex = null;
+      renderFrames();
     }
     async function playAudioSegmentByPts() {
       stopSegmentPlayback();
