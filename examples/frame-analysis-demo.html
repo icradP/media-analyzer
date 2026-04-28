@@ -394,28 +394,17 @@
         mseVideoElement: null,
         onStatus: setStatus,
       });
-      const gop = findGopRangeByFrame(targetFrame);
-      if (out?.mode === "tinyh264" && gop?.startFrame && gop?.endFrame) {
-        tinyDecoderGopRange = {
-          startIndex: Number(gop.startFrame.index),
-          endIndex: Number(gop.endFrame.index),
-        };
-      } else if (out?.mode && out.mode !== "tinyh264") {
-        tinyDecoderGopRange = null;
-      }
+      // GOP-lock routing intentionally disabled: never propagate decoder mode
+      // to subsequent frames. Each frame retries WebCodecs first.
+      tinyDecoderGopRange = null;
       if (out?.mode === "tinyh264") {
         console.info("[decode-switch] webcodecs -> tinyh264 success", {
           frameIndex: targetFrame?.index ?? null,
           mode: out.mode,
-          gopRange: tinyDecoderGopRange,
         });
       }
       if (webcodecsErr) console.warn("Switched to tinyh264 fallback after WebCodecs failure", webcodecsErr);
-      if (out?.mode === "tinyh264" && tinyDecoderGopRange) {
-        setStatus(`tinyh264 fallback done @ frame ${targetFrame.index}. decoder locked for GOP ${tinyDecoderGopRange.startIndex}-${tinyDecoderGopRange.endIndex}`);
-      } else {
-        setStatus(`tinyh264 fallback done @ frame ${targetFrame.index}.`);
-      }
+      setStatus(`tinyh264 fallback done @ frame ${targetFrame.index}.`);
     }
     function selectedFrame() {
       if (selectedIndex < 0 || selectedIndex >= shownFrames.length) return null;
@@ -1074,20 +1063,9 @@
       const raw = frameWrapper._rawFrame;
       if (!raw) return { mode: "skip" };
       const vStream = (result?.streams || []).find((s) => s.codecType === "video");
-      // 1) tinyh264 GOP lock route — same logic single-frame path uses.
-      updateTinyDecoderRangeOnSelection(frameWrapper);
-      if (isFrameInTinyDecoderRange(frameWrapper)) {
-        setStatus(`Decode route: tinyh264 GOP range ${tinyDecoderGopRange.startIndex}-${tinyDecoderGopRange.endIndex}`);
-        try {
-          await fallbackDecodeGopByMse(frameWrapper, null);
-          return { mode: "tinyh264-locked" };
-        } catch (lockedErr) {
-          markDecodeException(frameWrapper, lockedErr, `${context}/tinyh264-locked`);
-          setStatus(`tinyh264 locked-route failed @ frame ${frameWrapper?.index ?? "-"}: ${lockedErr?.message || String(lockedErr)}`);
-          return { mode: "failed", error: lockedErr };
-        }
-      }
-      // 2) WebCodecs multi-strategy decode (shared with single-frame path).
+      // 1) WebCodecs first (multi-strategy). GOP-lock routing is intentionally
+      //    disabled for now: every frame attempts WebCodecs again, only failing
+      //    frames fall back to tinyh264 individually.
       setStatus(`Decoding video frame=${raw.index} ...`);
       const ctx2d = canvasEl.getContext("2d");
       if (ctx2d) ctx2d.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
@@ -1153,18 +1131,35 @@
         recordFailureSnapshot: true,
       });
     }
+    function isFlvVideoConfigFrameWrapper(frame) {
+      const fs = frame?._rawFrame?.formatSpecific || {};
+      if (Number(fs?._avcPacketType_value) === 0) return true;
+      if (Number(fs?._hevcPacketType_value) === 0) return true;
+      if (Number(fs?._isExHeader_value) === 1 && Number(fs?._packetType_value) === 0) return true;
+      return false;
+    }
     async function playVideoSegmentByPts() {
       stopSegmentPlayback();
       const token = segmentPlayToken;
       const { startSec, endSec } = getSegmentBoundsSec();
-      const targetVideoFrames = getFramesBySegment("video", startSec, endSec);
-      if (!targetVideoFrames.length) throw new Error("No video frames in selected segment.");
+      const allTargetVideoFrames = getFramesBySegment("video", startSec, endSec);
+      if (!allTargetVideoFrames.length) throw new Error("No video frames in selected segment.");
+      // Skip FLV sequence-header / Enhanced-FLV config frames: they are not
+      // decodable pictures and their pts is typically 0, which would otherwise
+      // anchor the wall-clock baseline far before the first real picture and
+      // freeze playback on the first frame.
+      const targetVideoFrames = allTargetVideoFrames.filter((f) => !isFlvVideoConfigFrameWrapper(f));
+      if (!targetVideoFrames.length) {
+        throw new Error("Segment contains only FLV sequence headers, no decodable picture.");
+      }
+      const skippedConfigCount = allTargetVideoFrames.length - targetVideoFrames.length;
       const vStream = (result?.streams || []).find((s) => s.codecType === "video");
       const codecString = await resolveVideoDecoderCodecForStream(vStream);
       if (!codecString) throw new Error(`Unsupported codecName for WebCodecs: ${vStream?.codecName || "unknown"}`);
       const wallStart = performance.now();
-      const segmentPtsStart = getFrameTimeSec(targetVideoFrames[0]) || startSec;
-      setStatus(`Segment video play: frames=${targetVideoFrames.length}, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}]`);
+      const firstRealPts = getFrameTimeSec(targetVideoFrames[0]);
+      const segmentPtsStart = typeof firstRealPts === "number" ? firstRealPts : startSec;
+      setStatus(`Segment video play: frames=${targetVideoFrames.length}${skippedConfigCount ? ` (skipped ${skippedConfigCount} config tags)` : ""}, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}], baseline=${segmentPtsStart.toFixed(3)}s`);
       for (let i = 0; i < targetVideoFrames.length; i++) {
         if (token !== segmentPlayToken) return;
         const f = targetVideoFrames[i];
