@@ -9,6 +9,10 @@
 
 本目录为纯源码与静态示例，不依赖 npm。
 
+## 架构文档
+
+- [项目架构与逻辑](./docs/architecture.md)
+
 ## 仓库与在线示例
 
 - GitHub 仓库：[icradP/media-analyzer](https://github.com/icradP/media-analyzer/)
@@ -73,4 +77,3 @@ console.log(result.frames?.length);
 ### frame-analysis-demo
 
 ![frame-analysis-demo](./docs/screenshots/frame-analysis-demo.png)
-

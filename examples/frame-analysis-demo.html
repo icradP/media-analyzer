@@ -250,12 +250,11 @@
       buildHexViewRows,
       pickHexSourceBytesForInspector,
       buildFrameDetailForInspector,
-      buildVideoDecodePlan,
       buildAudioPlaybackBytes,
       buildAudioPlaybackBytesForFrameRange,
       buildFrameReferenceRelations,
-      decodeVideoFramesToCanvas,
       playAudioFrameWithWebAudio,
+      decodeAudioFramesToBufferWithWebAudio,
       sliceFrameBytes,
       decodeVideoFrameWithStrategies as libDecodeVideoFrameWithStrategies,
       resolveVideoDecoderCodecForStream,
@@ -1067,22 +1066,33 @@
       renderStatsPanel();
     }
 
-    async function decodeSelectedVideoFrame() {
-      const sf = selectedFrame();
-      if (!sf) throw new Error("No selected frame.");
-      if (sf._mediaType !== "video") return;
-      updateTinyDecoderRangeOnSelection(sf);
-      if (isFrameInTinyDecoderRange(sf)) {
-        setStatus(`Decode route: tinyh264 GOP range ${tinyDecoderGopRange.startIndex}-${tinyDecoderGopRange.endIndex}`);
-        await fallbackDecodeGopByMse(sf, null);
-        return;
+    async function runVideoFrameDecodeFlow(frameWrapper, options = {}) {
+      const { context = "decode", recordFailureSnapshot = false } = options;
+      if (!frameWrapper || frameWrapper._mediaType !== "video") {
+        return { mode: "skip" };
       }
-      const raw = sf._rawFrame;
+      const raw = frameWrapper._rawFrame;
+      if (!raw) return { mode: "skip" };
       const vStream = (result?.streams || []).find((s) => s.codecType === "video");
+      // 1) tinyh264 GOP lock route — same logic single-frame path uses.
+      updateTinyDecoderRangeOnSelection(frameWrapper);
+      if (isFrameInTinyDecoderRange(frameWrapper)) {
+        setStatus(`Decode route: tinyh264 GOP range ${tinyDecoderGopRange.startIndex}-${tinyDecoderGopRange.endIndex}`);
+        try {
+          await fallbackDecodeGopByMse(frameWrapper, null);
+          return { mode: "tinyh264-locked" };
+        } catch (lockedErr) {
+          markDecodeException(frameWrapper, lockedErr, `${context}/tinyh264-locked`);
+          setStatus(`tinyh264 locked-route failed @ frame ${frameWrapper?.index ?? "-"}: ${lockedErr?.message || String(lockedErr)}`);
+          return { mode: "failed", error: lockedErr };
+        }
+      }
+      // 2) WebCodecs multi-strategy decode (shared with single-frame path).
       setStatus(`Decoding video frame=${raw.index} ...`);
+      const ctx2d = canvasEl.getContext("2d");
+      if (ctx2d) ctx2d.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
+      let webcodecsErr = null;
       try {
-        const ctx = canvasEl.getContext("2d");
-        if (ctx) ctx.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
         const out = await libDecodeVideoFrameWithStrategies({
           mediaInfo: resultMap,
           targetFrameIndex: raw.index,
@@ -1090,27 +1100,58 @@
           canvas: canvasEl,
         });
         console.info("[decode-switch] using webcodecs", {
+          context,
           frameIndex: raw.index,
           strategy: out?.strategy || null,
           codec: out?.codec || null,
         });
         setStatus(`Video decode done. strategy=${out?.strategy || "-"}, codec=${out?.codec || "-"}`);
+        return { mode: "webcodecs", strategy: out?.strategy, codec: out?.codec };
       } catch (err) {
-        const rf = raw || {};
+        webcodecsErr = err;
         const diagnostics = err?.diagnostics || {};
         err.diagnostics = {
           ...diagnostics,
           selectedFrame: {
-            index: rf?.index ?? null,
-            offset: Number.isFinite(rf?.offset) ? rf.offset : (Number.isFinite(rf?.formatSpecific?.offset) ? rf.formatSpecific.offset : null),
-            pts: rf?.pts ?? null,
-            dts: rf?.dts ?? null,
-            ptsTime: rf?.ptsTime ?? null,
-            dtsTime: rf?.dtsTime ?? null,
+            index: raw?.index ?? null,
+            offset: Number.isFinite(raw?.offset) ? raw.offset : (Number.isFinite(raw?.formatSpecific?.offset) ? raw.formatSpecific.offset : null),
+            pts: raw?.pts ?? null,
+            dts: raw?.dts ?? null,
+            ptsTime: raw?.ptsTime ?? null,
+            dtsTime: raw?.dtsTime ?? null,
           },
         };
-        throw err;
+        markDecodeException(frameWrapper, err, context);
+        setStatus(`${formatVideoDecodeError(err)} (try tinyh264 fallback...)`);
+        console.error("video-decode-error", { context, frameIndex: raw?.index, error: err });
+        if (err?.diagnostics) {
+          console.error("video-decode-diagnostics", err.diagnostics);
+          const chunk = err.diagnostics?.chunk || err.diagnostics?.decodePlan?.errorChunk;
+          if (chunk) console.table([chunk]);
+        }
+        if (recordFailureSnapshot) {
+          setFailureSnapshotFromError(err, { context });
+        }
       }
+      // 3) tinyh264 fallback — same as single-frame error path.
+      try {
+        await fallbackDecodeGopByMse(frameWrapper, webcodecsErr);
+        return { mode: "tinyh264-fallback", webcodecsError: webcodecsErr };
+      } catch (fallbackErr) {
+        console.error("tinyh264-fallback-error", { context, frameIndex: raw?.index, error: fallbackErr });
+        markDecodeException(frameWrapper, fallbackErr, `${context}/tinyh264-fallback`);
+        setStatus(`${formatVideoDecodeError(webcodecsErr || fallbackErr)} | tinyh264 fallback failed: ${fallbackErr?.message || String(fallbackErr)}`);
+        return { mode: "failed", webcodecsError: webcodecsErr, fallbackError: fallbackErr };
+      }
+    }
+    async function decodeSelectedVideoFrame() {
+      const sf = selectedFrame();
+      if (!sf) throw new Error("No selected frame.");
+      if (sf._mediaType !== "video") return;
+      await runVideoFrameDecodeFlow(sf, {
+        context: "single-frame",
+        recordFailureSnapshot: true,
+      });
     }
     async function playVideoSegmentByPts() {
       stopSegmentPlayback();
@@ -1134,48 +1175,13 @@
         const waitMs = due - performance.now();
         if (waitMs > 1) await new Promise((r) => setTimeout(r, waitMs));
         if (token !== segmentPlayToken) return;
-        try {
-          const plan = buildVideoDecodePlan({
-            mediaInfo: resultMap,
-            targetFrameIndex: f._rawFrame.index,
-          });
-          await decodeVideoFramesToCanvas({
-            encodedFrames: plan.encodedFrames,
-            frameMeta: plan.encodedFrameMeta || null,
-            codecString,
-            description: plan.description,
-            canvas: canvasEl,
-          });
-        } catch (err) {
-          markDecodeException(f, err, "segment-webcodecs");
-          const rf = f?._rawFrame || {};
-          const off = Number.isFinite(rf.offset) ? rf.offset : rf?.formatSpecific?.offset;
-          const msg = [
-            `Segment video play failed @ frame`,
-            `idx=${f?.index ?? "-"}`,
-            `offset=${Number.isFinite(off) ? `0x${off.toString(16).toUpperCase()}` : "-"}`,
-            `pts=${rf?.pts ?? "-"}`,
-            `ptsTime=${typeof rf?.ptsTime === "number" ? rf.ptsTime.toFixed(3) : "-"}`,
-            `err=${err?.message || String(err)}`,
-          ].join(" ");
-          setStatus(msg);
-          console.error("segment-video-frame-error", {
-            frameIndex: f?.index,
-            offset: off,
-            pts: rf?.pts,
-            ptsTime: rf?.ptsTime,
-            error: err,
-          });
-          try {
-            await fallbackDecodeGopByMse(f, err);
-            setStatus(`Segment video play switched to tinyh264 @ frame ${f?.index ?? "-"}.`);
-          } catch (fallbackErr) {
-            console.error("segment-video-tinyh264-fallback-error", {
-              frameIndex: f?.index,
-              error: fallbackErr,
-            });
-            throw fallbackErr;
-          }
+        const flowResult = await runVideoFrameDecodeFlow(f, {
+          context: `segment-frame[${f?.index ?? i}]`,
+          recordFailureSnapshot: false,
+        });
+        if (flowResult?.mode === "failed") {
+          // helper already updated status / marked exception; continue with next frame.
+          continue;
         }
       }
       if (token === segmentPlayToken) {
@@ -1197,11 +1203,13 @@
       if (ctx.state === "suspended") await ctx.resume();
       setStatus(`Segment audio play: frames=${targetAudioFrames.length}, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}]`);
       const rawFrames = targetAudioFrames.map((f) => f?._rawFrame).filter(Boolean);
-      const bytes = buildAudioPlaybackBytesForFrameRange(rawFrames, resultMap);
-      if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
-        throw new Error("No playable audio payload for selected segment.");
-      }
-      const decoded = await ctx.decodeAudioData(bytes.buffer.slice(0));
+      const decodedOut = await decodeAudioFramesToBufferWithWebAudio({
+        frames: rawFrames,
+        mediaInfo: resultMap,
+        audioContext: ctx,
+      });
+      currentAudioCtx = decodedOut.ctx;
+      const decoded = decodedOut.buffer;
       if (token !== segmentPlayToken) return;
       const src = ctx.createBufferSource();
       const analyser = ctx.createAnalyser();
@@ -1346,22 +1354,9 @@
       renderHex(sf);
       renderSelectedTree(sf);
       renderStatsPanel();
-      decodeSelectedVideoFrame().catch(async (err) => {
-        markDecodeException(selectedFrame(), err, "single-frame-click");
-        setStatus(`${formatVideoDecodeError(err)} (try tinyh264 fallback...)`);
-        console.error("video-decode-error", err);
-        if (err?.diagnostics) {
-          console.error("video-decode-diagnostics", err.diagnostics);
-          const chunk = err.diagnostics?.chunk || err.diagnostics?.decodePlan?.errorChunk;
-          if (chunk) console.table([chunk]);
-        }
-        setFailureSnapshotFromError(err, { context: "framesBody click auto-decode" });
-        try {
-          await fallbackDecodeGopByMse(selectedFrame(), err);
-        } catch (fallbackErr) {
-          console.error("tinyh264-fallback-error", fallbackErr);
-          setStatus(`${formatVideoDecodeError(err)} | tinyh264 fallback failed: ${fallbackErr?.message || String(fallbackErr)}`);
-        }
+      decodeSelectedVideoFrame().catch((err) => {
+        console.error("decodeSelectedVideoFrame guard", err);
+        setStatus(`Decode setup failed: ${err?.message || String(err)}`);
       });
     });
     selectedTreeEl.addEventListener("click", (ev) => {
@@ -1396,22 +1391,9 @@
     orderModeEl.addEventListener("change", rebuildList);
 
     decodeVideoBtn.addEventListener("click", () => {
-      decodeSelectedVideoFrame().catch(async (err) => {
-        markDecodeException(selectedFrame(), err, "single-frame-button");
-        setStatus(`${formatVideoDecodeError(err)} (try tinyh264 fallback...)`);
-        console.error("video-decode-error", err);
-        if (err?.diagnostics) {
-          console.error("video-decode-diagnostics", err.diagnostics);
-          const chunk = err.diagnostics?.chunk || err.diagnostics?.decodePlan?.errorChunk;
-          if (chunk) console.table([chunk]);
-        }
-        setFailureSnapshotFromError(err, { context: "decodeVideo button" });
-        try {
-          await fallbackDecodeGopByMse(selectedFrame(), err);
-        } catch (fallbackErr) {
-          console.error("tinyh264-fallback-error", fallbackErr);
-          setStatus(`${formatVideoDecodeError(err)} | tinyh264 fallback failed: ${fallbackErr?.message || String(fallbackErr)}`);
-        }
+      decodeSelectedVideoFrame().catch((err) => {
+        console.error("decodeSelectedVideoFrame guard", err);
+        setStatus(`Decode setup failed: ${err?.message || String(err)}`);
       });
     });
 
