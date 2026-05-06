@@ -1728,7 +1728,7 @@
     }
 
     async function runVideoFrameDecodeFlow(frameWrapper, options = {}) {
-      const { context = "decode", recordFailureSnapshot = false } = options;
+      const { context = "decode", recordFailureSnapshot = false, preserveCanvas = false } = options;
       if (!frameWrapper || frameWrapper._mediaType !== "video") {
         return { mode: "skip" };
       }
@@ -1739,8 +1739,10 @@
       //    disabled for now: every frame attempts WebCodecs again, only failing
       //    frames fall back to tinyh264 individually.
       setStatus(`Decoding video frame=${raw.index} ...`);
-      const ctx2d = canvasEl.getContext("2d");
-      if (ctx2d) ctx2d.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
+      if (!preserveCanvas) {
+        const ctx2d = canvasEl.getContext("2d");
+        if (ctx2d) ctx2d.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
+      }
       let webcodecsErr = null;
       try {
         const out = await libDecodeVideoFrameWithStrategies({
@@ -1803,6 +1805,60 @@
         recordFailureSnapshot: true,
       });
     }
+    function sleepSegmentMs(ms, token) {
+      const deadline = performance.now() + Math.max(0, Number(ms) || 0);
+      return new Promise((resolve) => {
+        const tick = () => {
+          if (token !== segmentPlayToken) {
+            resolve();
+            return;
+          }
+          const left = deadline - performance.now();
+          if (left <= 0) {
+            resolve();
+            return;
+          }
+          setTimeout(tick, Math.min(50, left));
+        };
+        tick();
+      });
+    }
+    async function playVideoSegmentByFrameStepping({ frames, token, originalError }) {
+      const targets = (Array.isArray(frames) ? frames : [])
+        .filter((f) => f?._mediaType === "video")
+        .sort((a, b) => {
+          const at = getFrameTimeSec(a);
+          const bt = getFrameTimeSec(b);
+          if (at !== bt) return at - bt;
+          return (Number(a?.index) || 0) - (Number(b?.index) || 0);
+        });
+      if (!targets.length) throw originalError || new Error("No video frames in selected segment.");
+      const baseTime = getFrameTimeSec(targets[0]) ?? 0;
+      const wallStart = performance.now();
+      let rendered = 0;
+      setStatus(`Segment WebCodecs failed; fallback to single-frame stepping (${targets.length} frames)...`);
+      for (const fw of targets) {
+        if (token !== segmentPlayToken) return { stopped: true, rendered };
+        const t = getFrameTimeSec(fw) ?? baseTime;
+        const dueMs = (t - baseTime) * 1000;
+        const waitMs = wallStart + dueMs - performance.now();
+        if (waitMs > 0) await sleepSegmentMs(waitMs, token);
+        if (token !== segmentPlayToken) return { stopped: true, rendered };
+        playingFrameIndex = Number(fw.index);
+        playheadSec = t;
+        syncPlaybackCursorByGlobalFrameIndex(playingFrameIndex, { scroll: false });
+        scheduleDrawNleTimeline();
+        const out = await runVideoFrameDecodeFlow(fw, {
+          context: "segment-frame-fallback",
+          recordFailureSnapshot: false,
+          preserveCanvas: true,
+        });
+        if (out?.mode !== "failed") rendered += 1;
+      }
+      if (rendered <= 0 && originalError) throw originalError;
+      setStatus(`Segment fallback play done. rendered=${rendered}/${targets.length}`);
+      return { stopped: false, rendered };
+    }
     async function playVideoSegmentByPts() {
       stopSegmentPlayback();
       const token = segmentPlayToken;
@@ -1831,11 +1887,22 @@
           console.error("segment-video-player-error", err);
         },
       });
-      await activeVideoSegmentPlayer.playSegment({
-        startSec,
-        endSec,
-        frames: allFrames,
-      });
+      try {
+        await activeVideoSegmentPlayer.playSegment({
+          startSec,
+          endSec,
+          frames: allFrames,
+        });
+      } catch (err) {
+        console.warn("segment-video-player-webcodecs-fallback", err);
+        activeVideoSegmentPlayer?.stop?.();
+        activeVideoSegmentPlayer = null;
+        await playVideoSegmentByFrameStepping({
+          frames: allTargetVideoFrames,
+          token,
+          originalError: err,
+        });
+      }
       if (token !== segmentPlayToken) return;
       playingFrameIndex = null;
       renderFrames();
