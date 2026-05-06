@@ -21,7 +21,7 @@
       background: var(--bg);
       color: var(--text);
     }
-    .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    .wrap { width: min(100vw - 24px, 1880px); margin: 0 auto; padding: 12px; }
     h1 { margin: 0 0 10px; font-size: 24px; }
     .muted { color: var(--muted); }
     .toolbar, .subbar {
@@ -36,10 +36,117 @@
     }
     button { cursor: pointer; }
     button:disabled { opacity: 0.5; cursor: default; }
+    .nle-column {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .nle-monitor-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .nle-title { font-size: 14px; color: var(--accent); margin: 0; }
+    .transport-time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .monitor-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+      gap: 8px;
+      align-items: stretch;
+    }
+    .monitor-side {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
+      gap: 8px;
+      min-height: 0;
+      align-items: stretch;
+    }
+    .monitor-info-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #101726;
+      padding: 8px;
+      min-height: 120px;
+      overflow: auto;
+    }
+    .monitor-info-card .title { margin-bottom: 6px; }
+    .monitor-info-card .tree-wrap { max-height: min(34vh, 300px); }
+    .monitor-info-card .hex-wrap { max-height: min(34vh, 300px); }
+    .video-preview-shell {
+      width: 100%;
+      max-height: min(52vh, 540px);
+      min-height: 120px;
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      aspect-ratio: 16 / 9;
+    }
+    .video-preview-shell canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      background: #000;
+    }
+    .transport {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 8px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .transport .seg-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .transport .seg-field input { width: 108px; }
+    .btn-primary { border-color: #3d6fa8; background: #1a2d45; }
+    #timelineCanvas {
+      width: 100%;
+      height: 96px;
+      display: block;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #0c111a;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    .timeline-hint { margin-top: 4px; font-size: 11px; }
+    .timeline-card,
+    .frames-card { min-width: 0; }
+    .frames-scroll {
+      height: min(42vh, 520px);
+      min-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f1622;
+    }
+    .timeline-strip {
+      position: relative;
+      z-index: 2;
+      background: #141b26;
+      padding: 6px 6px 2px;
+      border-bottom: 1px solid var(--border);
+    }
     .layout {
       display: grid;
-      grid-template-columns: 480px 1fr;
-      gap: 12px;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      align-items: start;
     }
     .card {
       border: 1px solid var(--border);
@@ -54,25 +161,62 @@
       color: var(--accent);
     }
     .status { min-height: 20px; margin-bottom: 10px; color: var(--muted); }
-    .frame-list {
-      max-height: 70vh;
-      overflow: auto;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+    .frame-list { min-width: 0; }
+    .frame-timeline-body {
+      padding: 0;
+      display: block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
     }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { border-bottom: 1px solid #1e2634; padding: 5px 6px; text-align: left; }
-    th { position: sticky; top: 0; background: #111a28; z-index: 1; }
-    tr.selected { background: #20324b; }
-    tr.playing { box-shadow: inset 3px 0 0 #ffd166; }
-    tr.decode-error { background: rgba(255, 82, 82, 0.12); box-shadow: inset 3px 0 0 #ff5252; }
-    tr.decode-error td { color: #ffb3b3; }
+    .frame-virtual-spacer {
+      position: relative;
+      min-width: 960px;
+    }
+    .frame-table-meta {
+      padding: 7px 10px;
+      color: var(--muted);
+      border-bottom: 1px solid #233047;
+      background: #111923;
+    }
+    .frame-table-row {
+      display: grid;
+      grid-template-columns: 64px 70px 110px 68px 88px 88px 124px 82px 92px;
+      gap: 8px;
+      align-items: center;
+      height: 28px;
+      padding: 0 10px;
+      border-bottom: 1px solid #1f2a3d;
+      color: #dce6f4;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .frame-table-row.header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      height: 30px;
+      color: #9fb0ca;
+      font-weight: 700;
+      background: #141d2a;
+      cursor: default;
+    }
+    .frame-table-row:not(.header):hover { background: #172338; }
+    .frame-table-row.selected { background: #5260d6; color: #fff; }
+    .frame-table-row.playing { box-shadow: inset 3px 0 0 #ff9f43; }
+    .frame-table-row.decode-error { color: #ffc5c8; background: rgba(255, 82, 82, 0.14); box-shadow: inset 3px 0 0 #ff5252; }
+    .frame-table-row .mono-clip {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .right-grid {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
     }
-    #videoCanvas { width: 100%; max-height: 280px; background: #000; border: 1px solid var(--border); }
     .hex-wrap { overflow: auto; max-height: 44vh; border: 1px solid var(--border); border-radius: 8px; }
     .hex-row { display: grid; grid-template-columns: 90px 1fr 220px; gap: 8px; padding: 2px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
     .hex-row:nth-child(odd) { background: rgba(255,255,255,0.02); }
@@ -145,12 +289,17 @@
       font-size: 12px;
       white-space: pre;
     }
+    @media (max-width: 1100px) {
+      .right-grid { grid-template-columns: 1fr; }
+      .monitor-main { grid-template-columns: 1fr; }
+      .monitor-side { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Frame Analysis Example</h1>
-    <div class="muted">逐帧分析 + HexDataView + 单帧音频播放 + 视频帧浏览器解码(canvas)。</div>
+    <div class="muted">逐帧分析 + HexDataView + 单帧音频播放 + 视频帧浏览器解码(canvas)。时间标尺与横向帧块合并为统一时间区并横向铺满主页面。</div>
     <div class="toolbar">
       <input id="file" type="file" />
       <button id="analyze">Analyze</button>
@@ -159,14 +308,6 @@
       <button id="saveCapture" disabled>Save File</button>
       <button id="decodeVideo">Decode Video Frame</button>
       <button id="playAudio">Play Audio Frame</button>
-      <label>Seg PTS(s)</label>
-      <input id="segStart" type="number" step="0.001" placeholder="start" style="width:120px" />
-      <input id="segEnd" type="number" step="0.001" placeholder="end" style="width:120px" />
-      <button id="setSegStart">Set Start=Selected</button>
-      <button id="setSegEnd">Set End=Selected</button>
-      <button id="playSegVideo">Play Video Segment</button>
-      <button id="playSegAudio">Play Audio Segment</button>
-      <button id="stopSeg">Stop Segment</button>
       <button id="clear">Clear</button>
     </div>
     <div class="subbar">
@@ -185,35 +326,64 @@
     </div>
     <div id="status" class="status">Ready.</div>
 
+    <div class="nle-column">
+      <section class="card nle-monitor">
+        <div class="nle-monitor-head">
+          <h2 class="nle-title">节目监视器</h2>
+          <span id="transportTime" class="transport-time muted">播放头 — | 入 — — 出 —</span>
+        </div>
+        <div class="monitor-main">
+          <div id="videoPreviewShell" class="video-preview-shell">
+            <canvas id="videoCanvas"></canvas>
+          </div>
+          <div class="monitor-side">
+            <section class="monitor-info-card">
+              <h2 class="title">Selected Frame</h2>
+              <div id="selectedInfo" class="kv"></div>
+              <div id="selectedTree" class="tree-wrap"><div class="field-empty">No details.</div></div>
+            </section>
+            <section class="monitor-info-card">
+              <h2 class="title">HexDataView</h2>
+              <div id="hexWrap" class="hex-wrap"></div>
+            </section>
+          </div>
+        </div>
+        <div class="transport">
+          <button id="playSegVideo" class="btn-primary">播放视频选区</button>
+          <button id="playSegAudio" class="btn-primary">播放音频选区</button>
+          <button id="stopSeg">停止</button>
+          <span class="seg-field"><label for="segStart">入点 (s)</label><input id="segStart" type="number" step="0.001" placeholder="start" /></span>
+          <span class="seg-field"><label for="segEnd">出点 (s)</label><input id="segEnd" type="number" step="0.001" placeholder="end" /></span>
+          <button type="button" id="markIn" title="将入点设为当前播放头">I ← 播放头</button>
+          <button type="button" id="markOut" title="将出点设为当前播放头">O ← 播放头</button>
+          <button type="button" id="setSegStart">入点 ← 所选帧</button>
+          <button type="button" id="setSegEnd">出点 ← 所选帧</button>
+        </div>
+      </section>
+    </div>
+
     <div class="layout">
-      <section class="card">
-        <h2 class="title">Frames</h2>
-        <div class="frame-list">
-          <table>
-            <thead>
-              <tr>
-                <th>Addr#</th><th>Idx</th><th>Offset</th><th>Type</th><th>PTS</th><th>DTS</th><th>PTS(s)</th><th>DTS(s)</th><th>PTS(HMS)</th><th>DTS(HMS)</th><th>Size</th><th>Pic</th><th>Codec</th>
-              </tr>
-            </thead>
-            <tbody id="framesBody"></tbody>
-          </table>
+      <section class="card timeline-card">
+        <h2 class="title">时间轴（标尺 + 轨道）</h2>
+        <div class="timeline-strip">
+          <canvas id="timelineCanvas" width="900" height="96"></canvas>
+          <div class="timeline-hint muted">独立时间轴：拖播放头，拖入出点，点击轨道定位到对应帧。</div>
+        </div>
+      </section>
+
+      <section class="card frames-card">
+        <h2 class="title">帧列表明细</h2>
+        <div id="framesScroll" class="frames-scroll">
+          <div class="frame-table-row header">
+            <span>Addr#</span><span>Idx</span><span>Offset</span><span>Type</span><span>PTS</span><span>PTS(s)</span><span>PTS(HMS)</span><span>Size</span><span>Codec</span>
+          </div>
+          <div id="framesSpacer" class="frame-virtual-spacer">
+            <div id="framesBody" class="frame-list frame-timeline-body"></div>
+          </div>
         </div>
       </section>
 
       <section class="right-grid">
-        <section class="card">
-          <h2 class="title">Selected Frame</h2>
-          <div id="selectedInfo" class="kv"></div>
-          <div id="selectedTree" class="tree-wrap"><div class="field-empty">No details.</div></div>
-        </section>
-        <section class="card">
-          <h2 class="title">Playback Canvas (Video Decode / Audio Waveform)</h2>
-          <canvas id="videoCanvas"></canvas>
-        </section>
-        <section class="card">
-          <h2 class="title">HexDataView</h2>
-          <div id="hexWrap" class="hex-wrap"></div>
-        </section>
         <section class="card">
           <h2 class="title">Stats Panel (Interval / Bitrate / A-V TS)</h2>
           <div id="statsSummary" class="stats-summary"></div>
@@ -287,6 +457,8 @@
     const orderModeEl = document.getElementById("orderMode");
     const statusEl = document.getElementById("status");
     const countEl = document.getElementById("count");
+    const framesScrollEl = document.getElementById("framesScroll");
+    const framesSpacerEl = document.getElementById("framesSpacer");
     const framesBodyEl = document.getElementById("framesBody");
     const selectedInfoEl = document.getElementById("selectedInfo");
     const selectedTreeEl = document.getElementById("selectedTree");
@@ -299,6 +471,11 @@
     const copyFailureBtn = document.getElementById("copyFailure");
     const clearFailureBtn = document.getElementById("clearFailure");
     const canvasEl = document.getElementById("videoCanvas");
+    const videoPreviewShellEl = document.getElementById("videoPreviewShell");
+    const timelineCanvasEl = document.getElementById("timelineCanvas");
+    const transportTimeEl = document.getElementById("transportTime");
+    const markInBtn = document.getElementById("markIn");
+    const markOutBtn = document.getElementById("markOut");
 
     let result = null;
     let resultMap = null;
@@ -321,6 +498,24 @@
     let playingFrameIndex = null;
     let tinyDecoderGopRange = null;
     let decodeExceptionFrameIndexes = new Set();
+    let playheadSec = null;
+    let timelineDrag = null;
+    let timelineDrawRaf = 0;
+    let timelineTrackTimesDirty = true;
+    let timelineBoundsCache = null;
+    let timelineVideoTimesSorted = [];
+    let timelineAudioTimesSorted = [];
+    let frameListScrollRaf = 0;
+
+    const FRAME_ROW_H = 28;
+    const FRAME_HEADER_H = 30;
+    const FRAME_OVERSCAN = 18;
+    const TL_LABEL_W = 42;
+    const TL_RULER_H = 22;
+    const TL_TRACK_H = 26;
+    const TL_GAP = 4;
+    const TL_PAD_R = 10;
+    const TL_PAD_B = 6;
 
     function setStatus(text) { statusEl.textContent = text; }
     function inferNameFromUrl(urlText) {
@@ -424,9 +619,17 @@
       return shownFrames.findIndex((f) => Number(f?.index) === Number(globalFrameIndex));
     }
     function scrollFrameRowIntoView(shownIdx) {
-      const row = framesBodyEl.querySelector(`tr[data-idx="${shownIdx}"]`);
-      if (!row) return;
-      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      if (!framesScrollEl || !Number.isFinite(shownIdx)) return;
+      const rowTop = FRAME_HEADER_H + shownIdx * FRAME_ROW_H;
+      const rowBottom = rowTop + FRAME_ROW_H;
+      const viewTop = framesScrollEl.scrollTop;
+      const viewBottom = viewTop + framesScrollEl.clientHeight;
+      if (rowTop < viewTop) {
+        framesScrollEl.scrollTop = Math.max(0, rowTop - FRAME_ROW_H * 2);
+      } else if (rowBottom > viewBottom) {
+        framesScrollEl.scrollTop = Math.max(0, rowBottom - framesScrollEl.clientHeight + FRAME_ROW_H * 2);
+      }
+      renderFrames();
     }
     function syncPlaybackCursorByGlobalFrameIndex(globalFrameIndex, opts = {}) {
       const shownIdx = findShownIndexByFrameGlobalIndex(globalFrameIndex);
@@ -781,6 +984,414 @@
       });
       return arr;
     }
+
+    function getTimelineMediaBounds() {
+      if (timelineBoundsCache) return timelineBoundsCache;
+      const ts = (allFrames || []).map(getFrameTimeSec).filter((v) => typeof v === "number");
+      if (!ts.length) return null;
+      const minT = Math.min(...ts);
+      let maxT = Math.max(...ts);
+      if (maxT <= minT) maxT = minT + 0.05;
+      timelineBoundsCache = { minT, maxT };
+      return timelineBoundsCache;
+    }
+    function timelineCssSize() {
+      const w = timelineCanvasEl.clientWidth || 800;
+      const h = 96;
+      return { w, h };
+    }
+    function buildTimelineGeom(cssW, cssH) {
+      const bounds = getTimelineMediaBounds();
+      if (!bounds) return null;
+      const innerLeft = TL_LABEL_W;
+      const innerW = Math.max(40, cssW - innerLeft - TL_PAD_R);
+      const trackTop = TL_RULER_H + TL_GAP;
+      return {
+        cssW,
+        cssH,
+        minT: bounds.minT,
+        maxT: bounds.maxT,
+        innerLeft,
+        innerW,
+        vTrackTop: trackTop,
+        aTrackTop: trackTop + TL_TRACK_H + TL_GAP,
+        trackH: TL_TRACK_H,
+      };
+    }
+    function timeToTimelineX(t, g) {
+      const span = g.maxT - g.minT || 1;
+      const r = (t - g.minT) / span;
+      return g.innerLeft + Math.max(0, Math.min(1, r)) * g.innerW;
+    }
+    function timelinePointerXToTime(mx, g) {
+      const span = g.maxT - g.minT || 1;
+      const r = (mx - g.innerLeft) / g.innerW;
+      return g.minT + Math.max(0, Math.min(1, r)) * span;
+    }
+    function ensureTimelineBackingStore(canvas, cssW, cssH) {
+      const dpr = window.devicePixelRatio || 1;
+      const needW = Math.floor(cssW * dpr);
+      const needH = Math.floor(cssH * dpr);
+      if (canvas.width !== needW || canvas.height !== needH) {
+        canvas.width = needW;
+        canvas.height = needH;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return ctx;
+    }
+    function markTimelineTrackTimesDirty() {
+      timelineTrackTimesDirty = true;
+      timelineBoundsCache = null;
+    }
+    function rebuildTimelineTrackTimesIfNeeded() {
+      if (!timelineTrackTimesDirty) return;
+      timelineTrackTimesDirty = false;
+      timelineVideoTimesSorted = (allFrames || [])
+        .filter((f) => f._mediaType === "video")
+        .map(getFrameTimeSec)
+        .filter((t) => typeof t === "number")
+        .sort((a, b) => a - b);
+      timelineAudioTimesSorted = (allFrames || [])
+        .filter((f) => f._mediaType === "audio")
+        .map(getFrameTimeSec)
+        .filter((t) => typeof t === "number")
+        .sort((a, b) => a - b);
+    }
+    function scheduleDrawNleTimeline() {
+      if (timelineDrawRaf) return;
+      timelineDrawRaf = requestAnimationFrame(() => {
+        timelineDrawRaf = 0;
+        drawNleTimelineNow();
+      });
+    }
+    function paintMergedTrackSpans(ctx, times, y0, rgba, g) {
+      if (!times.length) return;
+      ctx.fillStyle = rgba;
+      const span = g.maxT - g.minT || 1;
+      const eps = 0.8;
+      let runX0 = null;
+      let runX1 = null;
+      const flush = () => {
+        if (runX0 === null) return;
+        ctx.fillRect(runX0, y0 + 3, Math.max(1, runX1 - runX0), g.trackH - 6);
+        runX0 = null;
+      };
+      for (let i = 0; i < times.length; i++) {
+        const t0 = times[i];
+        const tNext = i + 1 < times.length ? times[i + 1] : null;
+        const t1 = typeof tNext === "number" ? Math.max(tNext, t0 + span / 8000) : Math.min(g.maxT, t0 + span / 120);
+        const x0 = timeToTimelineX(t0, g);
+        const x1 = timeToTimelineX(Math.min(t1, g.maxT), g);
+        const rw = Math.max(2, x1 - x0);
+        if (runX0 === null) {
+          runX0 = x0;
+          runX1 = x0 + rw;
+        } else if (x0 <= runX1 + eps) {
+          runX1 = Math.max(runX1, x0 + rw);
+        } else {
+          flush();
+          runX0 = x0;
+          runX1 = x0 + rw;
+        }
+      }
+      flush();
+    }
+    function syncTransportLabels() {
+      if (!transportTimeEl) return;
+      const ph = typeof playheadSec === "number" && Number.isFinite(playheadSec)
+        ? formatHms(playheadSec)
+        : "—";
+      const ins = Number(segStartEl?.value);
+      const outs = Number(segEndEl?.value);
+      const iOk = Number.isFinite(ins);
+      const oOk = Number.isFinite(outs);
+      transportTimeEl.textContent = `播放头 ${ph}  |  入 ${iOk ? formatHms(ins) : "—"} — 出 ${oOk ? formatHms(outs) : "—"}`;
+    }
+    function drawNleTimelineNow() {
+      const canvas = timelineCanvasEl;
+      if (!(canvas instanceof HTMLCanvasElement)) return;
+      const { w, h } = timelineCssSize();
+      const g = buildTimelineGeom(w, h);
+      if (!g) {
+        const ctx0 = canvas.getContext("2d");
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        if (ctx0) {
+          ctx0.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx0.fillStyle = "#0c111a";
+          ctx0.fillRect(0, 0, w, h);
+          ctx0.fillStyle = "#97a3b6";
+          ctx0.font = "12px ui-monospace";
+          ctx0.fillText("分析文件后显示时间轴", TL_LABEL_W + 8, h / 2);
+        }
+        syncTransportLabels();
+        return;
+      }
+      rebuildTimelineTrackTimesIfNeeded();
+      const ctx = ensureTimelineBackingStore(canvas, w, h);
+      if (!ctx) return;
+      const span = g.maxT - g.minT || 1;
+
+      ctx.fillStyle = "#0c111a";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.fillStyle = "#111822";
+      ctx.fillRect(g.innerLeft, 0, g.innerW, TL_RULER_H - 2);
+
+      ctx.strokeStyle = "#2c3a52";
+      ctx.fillStyle = "#8b99b3";
+      ctx.font = "10px ui-monospace";
+      const roughTicks = Math.max(2, Math.min(12, Math.floor(g.innerW / 80)));
+      for (let i = 0; i <= roughTicks; i++) {
+        const t = g.minT + (span * i) / roughTicks;
+        const x = timeToTimelineX(t, g);
+        ctx.beginPath();
+        ctx.moveTo(x, 3);
+        ctx.lineTo(x, TL_RULER_H - 5);
+        ctx.stroke();
+        const prec = span > 120 ? 0 : span > 20 ? 1 : 2;
+        ctx.fillText(`${t.toFixed(prec)}`, x + 2, 13);
+      }
+
+      ctx.fillStyle = "#131b28";
+      ctx.fillRect(g.innerLeft, g.vTrackTop, g.innerW, g.trackH);
+      ctx.fillRect(g.innerLeft, g.aTrackTop, g.innerW, g.trackH);
+
+      ctx.fillStyle = "#6b7c94";
+      ctx.font = "11px ui-sans-serif";
+      ctx.fillText("V", 14, g.vTrackTop + g.trackH / 2 + 4);
+      ctx.fillText("A", 14, g.aTrackTop + g.trackH / 2 + 4);
+
+      paintMergedTrackSpans(ctx, timelineVideoTimesSorted, g.vTrackTop, "rgba(93,168,255,0.82)", g);
+      paintMergedTrackSpans(ctx, timelineAudioTimesSorted, g.aTrackTop, "rgba(122,209,122,0.72)", g);
+
+      const inSec = Number(segStartEl?.value);
+      const outSec = Number(segEndEl?.value);
+      if (Number.isFinite(inSec) && Number.isFinite(outSec) && outSec >= inSec) {
+        const x0 = timeToTimelineX(inSec, g);
+        const x1 = timeToTimelineX(outSec, g);
+        ctx.fillStyle = "rgba(255, 209, 102, 0.2)";
+        ctx.fillRect(x0, g.vTrackTop, Math.max(1, x1 - x0), g.trackH);
+        ctx.fillRect(x0, g.aTrackTop, Math.max(1, x1 - x0), g.trackH);
+        ctx.strokeStyle = "#ffd166";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x0, g.vTrackTop);
+        ctx.lineTo(x0, g.aTrackTop + g.trackH);
+        ctx.moveTo(x1, g.vTrackTop);
+        ctx.lineTo(x1, g.aTrackTop + g.trackH);
+        ctx.stroke();
+        ctx.fillStyle = "#ffd166";
+        ctx.fillRect(x0 - 3, g.vTrackTop, 6, g.trackH);
+        ctx.fillRect(x1 - 3, g.aTrackTop, 6, g.trackH);
+      }
+
+      if (typeof playheadSec === "number" && Number.isFinite(playheadSec)) {
+        const px = timeToTimelineX(playheadSec, g);
+        ctx.strokeStyle = "#ff5c5c";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px, 4);
+        ctx.lineTo(px, h - TL_PAD_B);
+        ctx.stroke();
+      }
+      syncTransportLabels();
+    }
+
+    const MIN_SEG_DELTA = 1 / 240;
+
+    function clampPair(inSec, outSec, minT, maxT) {
+      let a = Math.max(minT, Math.min(maxT, inSec));
+      let b = Math.max(minT, Math.min(maxT, outSec));
+      if (b < a + MIN_SEG_DELTA) {
+        if (a > maxT - MIN_SEG_DELTA) {
+          a = maxT - MIN_SEG_DELTA;
+          b = maxT;
+        } else {
+          b = a + MIN_SEG_DELTA;
+        }
+      }
+      return { a, b };
+    }
+
+    function timelineHitKind(mx, my, g) {
+      if (!g) return null;
+      const inner = mx >= g.innerLeft && mx <= g.innerLeft + g.innerW;
+      if (!inner) return null;
+      const inTracks = my >= g.vTrackTop && my <= g.aTrackTop + g.trackH;
+      const inRuler = my >= 0 && my <= TL_RULER_H;
+      if (inTracks) {
+        const inSec = Number(segStartEl?.value);
+        const outSec = Number(segEndEl?.value);
+        if (Number.isFinite(inSec) && Number.isFinite(outSec) && outSec >= inSec) {
+          const xi = timeToTimelineX(inSec, g);
+          const xo = timeToTimelineX(outSec, g);
+          const H = 12;
+          if (Math.abs(mx - xi) <= H) return "in";
+          if (Math.abs(mx - xo) <= H) return "out";
+        }
+        return "playhead";
+      }
+      if (inRuler) return "playhead";
+      return null;
+    }
+
+    function pickTimelineGeomFromClient(clientX, clientY) {
+      const canvas = timelineCanvasEl;
+      const rect = canvas.getBoundingClientRect();
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+      const { w, h } = timelineCssSize();
+      const g = buildTimelineGeom(w, h);
+      return { mx, my, g };
+    }
+
+    function selectShownFrameForPlayhead(t, { decodeVideo = false } = {}) {
+      const candidates = shownFrames
+        .map((f) => ({ f, tt: getFrameTimeSec(f) }))
+        .filter((x) => typeof x.tt === "number")
+        .sort((x, y) => x.tt - y.tt);
+      if (!candidates.length) return;
+      let best = candidates[0].f;
+      for (const x of candidates) {
+        if (x.tt <= t) best = x.f;
+        else break;
+      }
+      const shownIdx = shownFrames.indexOf(best);
+      if (shownIdx < 0) return;
+      selectedIndex = shownIdx;
+      playingFrameIndex = null;
+      scrollFrameRowIntoView(shownIdx);
+      const sf = selectedFrame();
+      renderSelectedInfo(sf);
+      renderHex(sf);
+      renderSelectedTree(sf);
+      if (decodeVideo && sf?._mediaType === "video") {
+        decodeSelectedVideoFrame().catch((err) => {
+          console.error("decodeSelectedVideoFrame guard", err);
+          setStatus(`Decode setup failed: ${err?.message || String(err)}`);
+        });
+      }
+    }
+
+    function bindTimelineInteractions() {
+      if (!(timelineCanvasEl instanceof HTMLCanvasElement)) return;
+
+      const onPointerMove = (ev) => {
+        if (!timelineDrag) return;
+        const bounds = getTimelineMediaBounds();
+        if (!bounds) return;
+        const { mx, g } = pickTimelineGeomFromClient(ev.clientX, ev.clientY);
+        if (!g) return;
+        const minT = bounds.minT;
+        const maxT = bounds.maxT;
+        const t = timelinePointerXToTime(mx, g);
+        if (timelineDrag.type === "playhead") {
+          playheadSec = Math.max(minT, Math.min(maxT, t));
+          scheduleDrawNleTimeline();
+          return;
+        }
+        if (timelineDrag.type === "in") {
+          let outSec = Number(segEndEl.value);
+          if (!Number.isFinite(outSec)) outSec = maxT;
+          const pair = clampPair(t, outSec, minT, maxT);
+          segStartEl.value = pair.a.toFixed(3);
+          segEndEl.value = pair.b.toFixed(3);
+        } else if (timelineDrag.type === "out") {
+          let inSec = Number(segStartEl.value);
+          if (!Number.isFinite(inSec)) inSec = minT;
+          const pair = clampPair(inSec, t, minT, maxT);
+          segStartEl.value = pair.a.toFixed(3);
+          segEndEl.value = pair.b.toFixed(3);
+        }
+        scheduleDrawNleTimeline();
+      };
+
+      const endDrag = (ev) => {
+        if (!timelineDrag) return;
+        const kind = timelineDrag.type;
+        timelineDrag = null;
+        try {
+          timelineCanvasEl.releasePointerCapture(ev.pointerId);
+        } catch {
+          // ignore
+        }
+        if (kind === "playhead" && typeof playheadSec === "number") {
+          selectShownFrameForPlayhead(playheadSec, { decodeVideo: true });
+        }
+        scheduleDrawNleTimeline();
+      };
+
+      timelineCanvasEl.addEventListener("pointerdown", (ev) => {
+        const bounds = getTimelineMediaBounds();
+        if (!bounds) return;
+        const { mx, my, g } = pickTimelineGeomFromClient(ev.clientX, ev.clientY);
+        if (!g) return;
+        const kind = timelineHitKind(mx, my, g);
+        if (!kind) return;
+        timelineDrag = { type: kind, pointerId: ev.pointerId };
+        timelineCanvasEl.setPointerCapture(ev.pointerId);
+        const minT = bounds.minT;
+        const maxT = bounds.maxT;
+        const t = timelinePointerXToTime(mx, g);
+        if (kind === "playhead") {
+          playheadSec = Math.max(minT, Math.min(maxT, t));
+          selectShownFrameForPlayhead(playheadSec, { decodeVideo: false });
+        } else if (kind === "in") {
+          let outSec = Number(segEndEl.value);
+          if (!Number.isFinite(outSec)) outSec = maxT;
+          const pair = clampPair(t, outSec, minT, maxT);
+          segStartEl.value = pair.a.toFixed(3);
+          segEndEl.value = pair.b.toFixed(3);
+        } else if (kind === "out") {
+          let inSec = Number(segStartEl.value);
+          if (!Number.isFinite(inSec)) inSec = minT;
+          const pair = clampPair(inSec, t, minT, maxT);
+          segStartEl.value = pair.a.toFixed(3);
+          segEndEl.value = pair.b.toFixed(3);
+        }
+        scheduleDrawNleTimeline();
+        ev.preventDefault();
+      });
+
+      timelineCanvasEl.addEventListener("pointermove", onPointerMove);
+      timelineCanvasEl.addEventListener("pointerup", endDrag);
+      timelineCanvasEl.addEventListener("pointercancel", endDrag);
+
+      let resizeBumpRaf = 0;
+      window.addEventListener("resize", () => {
+        if (resizeBumpRaf) cancelAnimationFrame(resizeBumpRaf);
+        resizeBumpRaf = requestAnimationFrame(() => {
+          resizeBumpRaf = 0;
+          scheduleDrawNleTimeline();
+        });
+      });
+      if (typeof ResizeObserver !== "undefined") {
+        let roBump = 0;
+        const ro = new ResizeObserver(() => {
+          if (roBump) cancelAnimationFrame(roBump);
+          roBump = requestAnimationFrame(() => {
+            roBump = 0;
+            scheduleDrawNleTimeline();
+          });
+        });
+        ro.observe(timelineCanvasEl);
+      }
+    }
+    function bindFrameVirtualList() {
+      if (!framesScrollEl) return;
+      framesScrollEl.addEventListener("scroll", () => {
+        if (frameListScrollRaf) return;
+        frameListScrollRaf = requestAnimationFrame(() => {
+          frameListScrollRaf = 0;
+          renderFrames({ drawTimeline: false });
+        });
+      });
+    }
+
     function stopSegmentPlayback() {
       segmentPlayToken += 1;
       if (activeVideoSegmentPlayer) {
@@ -811,11 +1422,33 @@
       if (!ctx) return;
       ctx.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
     }
+    function getPrimaryVideoStreamSize() {
+      const vs = (result?.streams || []).find((s) => s.codecType === "video");
+      if (!vs) return null;
+      const w = Number(vs.width ?? vs.codedWidth);
+      const h = Number(vs.height ?? vs.codedHeight);
+      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) return { w, h };
+      return null;
+    }
+    function applyVideoPreviewShellSizing() {
+      if (!(videoPreviewShellEl instanceof HTMLElement)) return;
+      const sz = getPrimaryVideoStreamSize();
+      if (sz) {
+        videoPreviewShellEl.style.aspectRatio = `${sz.w} / ${sz.h}`;
+      } else {
+        videoPreviewShellEl.style.aspectRatio = "16 / 9";
+      }
+    }
+    function previewShellBitmapCssPixels() {
+      const shell = videoPreviewShellEl;
+      const w = Math.max(320, Math.floor(shell?.clientWidth || 640));
+      const h = Math.max(160, Math.floor(shell?.clientHeight || 240));
+      return { w, h };
+    }
     function drawAudioWaveformFrame(analyser, dataArray) {
       const ctx = canvasEl.getContext("2d");
       if (!ctx) return;
-      const width = Math.max(640, Math.floor(canvasEl.clientWidth || 860));
-      const height = Math.max(220, Math.floor(canvasEl.clientHeight || 260));
+      const { w: width, h: height } = previewShellBitmapCssPixels();
       if (canvasEl.width !== width || canvasEl.height !== height) {
         canvasEl.width = width;
         canvasEl.height = height;
@@ -872,6 +1505,8 @@
         if (!Array.isArray(targetAudioFrames) || targetAudioFrames.length === 0) return;
         const elapsedSec = Math.max(0, ctx.currentTime - startWhen);
         const currentPtsSec = segmentPtsStart + elapsedSec;
+        playheadSec = currentPtsSec;
+        scheduleDrawNleTimeline();
         let currentFrame = targetAudioFrames[0];
         for (let i = 0; i < targetAudioFrames.length; i++) {
           const t = getFrameTimeSec(targetAudioFrames[i]);
@@ -1029,30 +1664,52 @@
         zeroY: true,
       });
     }
-    function renderFrames() {
+    function renderFrames(opts = {}) {
+      if (opts.drawTimeline !== false) scheduleDrawNleTimeline();
+      if (!shownFrames.length) {
+        if (framesSpacerEl) framesSpacerEl.style.height = "48px";
+        framesBodyEl.style.transform = "translateY(0)";
+        framesBodyEl.innerHTML = `<div class="field-empty">No frames in current filter.</div>`;
+        countEl.textContent = `frames: ${shownFrames.length}`;
+        return;
+      }
       const fmtTimeSec = (v) => (typeof v === "number" && Number.isFinite(v) ? v.toFixed(3) : "-");
-      const fmtTimeTick = (v) => (typeof v === "number" && Number.isFinite(v) ? String(v) : "-");
+      const fmtTick = (v) => (typeof v === "number" && Number.isFinite(v) ? String(v) : "-");
       const fmtOffset = (f) => {
         const off = frameOffsetValue(f);
         return Number.isFinite(off) ? `0x${Math.max(0, off).toString(16).toUpperCase()}` : "-";
       };
-      framesBodyEl.innerHTML = shownFrames.map((f, i) => `
-        <tr data-idx="${i}" class="${i === selectedIndex ? "selected" : ""} ${Number(f.index) === Number(playingFrameIndex) ? "playing" : ""} ${decodeExceptionFrameIndexes.has(Number(f.index)) ? "decode-error" : ""}">
-          <td>${i}</td>
-          <td>${f.index ?? "-"}</td>
-          <td>${fmtOffset(f)}</td>
-          <td>${esc(f._mediaType ?? "-")}</td>
-          <td>${fmtTimeTick(f._rawFrame?.pts ?? f._rawFrame?.timestamp ?? f._pts)}</td>
-          <td>${fmtTimeTick(f._rawFrame?.dts ?? f._rawFrame?.timestamp ?? "-")}</td>
-          <td>${fmtTimeSec(f._rawFrame?.ptsTime)}</td>
-          <td>${fmtTimeSec(f._rawFrame?.dtsTime)}</td>
-          <td>${formatHms(f._rawFrame?.ptsTime)}</td>
-          <td>${formatHms(f._rawFrame?.dtsTime)}</td>
-          <td>${f._size ?? "-"}</td>
-          <td>${esc(f._pictureType ?? "-")}</td>
-          <td>${esc(f._codecFormat ?? "-")}</td>
-        </tr>
-      `).join("");
+      const viewportHeight = Math.max(FRAME_ROW_H, framesScrollEl?.clientHeight || 420);
+      const scrollY = Math.max(0, (framesScrollEl?.scrollTop || 0) - FRAME_HEADER_H);
+      const firstVisible = Math.floor(scrollY / FRAME_ROW_H);
+      const visibleCount = Math.ceil(viewportHeight / FRAME_ROW_H) + FRAME_OVERSCAN * 2;
+      const start = Math.max(0, firstVisible - FRAME_OVERSCAN);
+      const end = Math.min(shownFrames.length, start + visibleCount);
+      if (framesSpacerEl) framesSpacerEl.style.height = `${shownFrames.length * FRAME_ROW_H}px`;
+      framesBodyEl.style.transform = `translateY(${start * FRAME_ROW_H}px)`;
+      const rows = shownFrames.slice(start, end).map((f, offset) => {
+        const i = start + offset;
+        const klass = [
+          "frame-table-row",
+          i === selectedIndex ? "selected" : "",
+          Number(f.index) === Number(playingFrameIndex) ? "playing" : "",
+          decodeExceptionFrameIndexes.has(Number(f.index)) ? "decode-error" : "",
+        ].filter(Boolean).join(" ");
+        return `
+          <div class="${klass}" data-idx="${i}">
+            <span>${i}</span>
+            <span>${esc(f.index ?? "-")}</span>
+            <span class="mono-clip">${esc(fmtOffset(f))}</span>
+            <span>${esc(f._mediaType ?? "-")}</span>
+            <span>${esc(fmtTick(f._rawFrame?.pts ?? f._rawFrame?.timestamp ?? f._pts))}</span>
+            <span>${esc(fmtTimeSec(f._rawFrame?.ptsTime))}</span>
+            <span>${esc(formatHms(f._rawFrame?.ptsTime))}</span>
+            <span>${esc(f._size ?? "-")}</span>
+            <span class="mono-clip">${esc(f._codecFormat ?? "-")}</span>
+          </div>
+        `;
+      }).join("");
+      framesBodyEl.innerHTML = rows;
       countEl.textContent = `frames: ${shownFrames.length}`;
     }
     function rebuildList() {
@@ -1060,12 +1717,14 @@
       const base = filter === "all" ? allFrames : getFilteredFrames(resultMap, filter, result?.format?.formatName);
       shownFrames = sortFramesByMode(base, orderModeEl.value);
       selectedIndex = shownFrames.length > 0 ? 0 : -1;
+      if (framesScrollEl) framesScrollEl.scrollTop = 0;
       renderFrames();
       const sf = selectedFrame();
       renderSelectedInfo(sf);
       renderHex(sf);
       renderSelectedTree(sf);
       renderStatsPanel();
+      scheduleDrawNleTimeline();
     }
 
     async function runVideoFrameDecodeFlow(frameWrapper, options = {}) {
@@ -1161,6 +1820,12 @@
           const frameIndex = Number(item?.frameIndex);
           if (!Number.isFinite(frameIndex)) return;
           syncPlaybackCursorByGlobalFrameIndex(frameIndex, { scroll: false });
+          const fw = allFrames.find((f) => Number(f?.index) === frameIndex);
+          const tt = fw ? getFrameTimeSec(fw) : null;
+          if (typeof tt === "number") {
+            playheadSec = tt;
+            scheduleDrawNleTimeline();
+          }
         },
         onError: (err) => {
           console.error("segment-video-player-error", err);
@@ -1174,6 +1839,7 @@
       if (token !== segmentPlayToken) return;
       playingFrameIndex = null;
       renderFrames();
+      scheduleDrawNleTimeline();
     }
     async function playAudioSegmentByPts() {
       stopSegmentPlayback();
@@ -1245,20 +1911,29 @@
       const format = result?.format?.formatName || "unknown";
       resultMap = { [format]: result };
       allFrames = getFrames(resultMap, format);
+      markTimelineTrackTimesDirty();
       shownFrames = sortFramesByMode(allFrames, orderModeEl.value);
       selectedIndex = shownFrames.length > 0 ? 0 : -1;
+      if (framesScrollEl) framesScrollEl.scrollTop = 0;
       renderFrames();
       const sf = selectedFrame();
       renderSelectedInfo(sf);
       renderHex(sf);
       renderSelectedTree(sf);
       renderStatsPanel();
+      applyVideoPreviewShellSizing();
       const timeline = allFrames.map(getFrameTimeSec).filter((v) => typeof v === "number");
       if (timeline.length > 0) {
         const minTs = Math.min(...timeline);
         const maxTs = Math.max(...timeline);
         if (!segStartEl.value) segStartEl.value = minTs.toFixed(3);
         if (!segEndEl.value) segEndEl.value = maxTs.toFixed(3);
+        const tsSel = getFrameTimeSec(sf);
+        playheadSec = typeof tsSel === "number" ? tsSel : minTs;
+        scheduleDrawNleTimeline();
+      } else {
+        playheadSec = null;
+        scheduleDrawNleTimeline();
       }
       libEnsureTinyH264WorkerReady()
         .then(() => {
@@ -1337,16 +2012,20 @@
     }
 
     framesBodyEl.addEventListener("click", (ev) => {
-      const tr = ev.target.closest("tr[data-idx]");
-      if (!tr) return;
-      selectedIndex = Number(tr.dataset.idx);
+      const chip = ev.target.closest("[data-idx]");
+      if (!chip) return;
+      selectedIndex = Number(chip.dataset.idx);
       playingFrameIndex = null;
       renderFrames();
+      const tsRow = getSelectedFramePtsSec();
+      if (typeof tsRow === "number") {
+        playheadSec = tsRow;
+        scheduleDrawNleTimeline();
+      }
       const sf = selectedFrame();
       renderSelectedInfo(sf);
       renderHex(sf);
       renderSelectedTree(sf);
-      renderStatsPanel();
       decodeSelectedVideoFrame().catch((err) => {
         console.error("decodeSelectedVideoFrame guard", err);
         setStatus(`Decode setup failed: ${err?.message || String(err)}`);
@@ -1424,12 +2103,46 @@
     });
     setSegStartBtn.addEventListener("click", () => {
       const ts = getSelectedFramePtsSec();
-      if (typeof ts === "number") segStartEl.value = ts.toFixed(3);
+      if (typeof ts === "number") {
+        segStartEl.value = ts.toFixed(3);
+        scheduleDrawNleTimeline();
+      }
     });
     setSegEndBtn.addEventListener("click", () => {
       const ts = getSelectedFramePtsSec();
-      if (typeof ts === "number") segEndEl.value = ts.toFixed(3);
+      if (typeof ts === "number") {
+        segEndEl.value = ts.toFixed(3);
+        scheduleDrawNleTimeline();
+      }
     });
+    markInBtn?.addEventListener("click", () => {
+      const b = getTimelineMediaBounds();
+      if (!b || typeof playheadSec !== "number" || !Number.isFinite(playheadSec)) {
+        setStatus("请先在时间轴上放置播放头。");
+        return;
+      }
+      let outSec = Number(segEndEl.value);
+      if (!Number.isFinite(outSec)) outSec = b.maxT;
+      const pair = clampPair(playheadSec, outSec, b.minT, b.maxT);
+      segStartEl.value = pair.a.toFixed(3);
+      segEndEl.value = pair.b.toFixed(3);
+      scheduleDrawNleTimeline();
+    });
+    markOutBtn?.addEventListener("click", () => {
+      const b = getTimelineMediaBounds();
+      if (!b || typeof playheadSec !== "number" || !Number.isFinite(playheadSec)) {
+        setStatus("请先在时间轴上放置播放头。");
+        return;
+      }
+      let inSec = Number(segStartEl.value);
+      if (!Number.isFinite(inSec)) inSec = b.minT;
+      const pair = clampPair(inSec, playheadSec, b.minT, b.maxT);
+      segStartEl.value = pair.a.toFixed(3);
+      segEndEl.value = pair.b.toFixed(3);
+      scheduleDrawNleTimeline();
+    });
+    segStartEl.addEventListener("input", () => scheduleDrawNleTimeline());
+    segEndEl.addEventListener("input", () => scheduleDrawNleTimeline());
     playSegVideoBtn.addEventListener("click", () => {
       playVideoSegmentByPts().catch((err) => {
         setStatus(`Segment video play failed: ${err?.message || String(err)}`);
@@ -1478,6 +2191,7 @@
       saveCaptureBtn.disabled = true;
       allFrames = [];
       shownFrames = [];
+      markTimelineTrackTimesDirty();
       selectedIndex = -1;
       framesBodyEl.innerHTML = "";
       selectedInfoEl.innerHTML = "";
@@ -1500,9 +2214,17 @@
       segEndEl.value = "";
       failureTextEl.value = "";
       countEl.textContent = "frames: 0";
+      if (framesSpacerEl) framesSpacerEl.style.height = "0";
+      if (framesScrollEl) framesScrollEl.scrollTop = 0;
       clearPlaybackCanvas();
+      playheadSec = null;
+      applyVideoPreviewShellSizing();
+      scheduleDrawNleTimeline();
       setStatus("Cleared.");
     });
+    bindTimelineInteractions();
+    bindFrameVirtualList();
+    scheduleDrawNleTimeline();
   </script>
 </body>
 </html>
