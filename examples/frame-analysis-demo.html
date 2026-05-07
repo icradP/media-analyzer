@@ -65,10 +65,19 @@
     .transport-time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
     .monitor-main {
       display: grid;
-      grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.62fr) minmax(320px, 1fr);
       gap: 8px;
       align-items: stretch;
     }
+    .monitor-sei-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #101726;
+      padding: 8px;
+      min-height: 120px;
+      overflow: auto;
+    }
+    .monitor-sei-card .title { margin-bottom: 6px; }
     .monitor-side {
       display: grid;
       grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
@@ -359,6 +368,23 @@
       font-size: 12px;
       white-space: pre;
     }
+    .sei-tools { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+    .sei-tools-mini { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+    .sei-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; min-height: 18px; }
+    .sei-text {
+      width: 100%;
+      min-height: 128px;
+      resize: vertical;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: #0f1622;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     @media (max-width: 1100px) {
       .right-grid { grid-template-columns: 1fr; }
       .monitor-main { grid-template-columns: 1fr; }
@@ -410,6 +436,20 @@
           <div id="videoPreviewShell" class="video-preview-shell">
             <canvas id="videoCanvas"></canvas>
           </div>
+          <section class="monitor-sei-card">
+            <h2 class="title">SEI Editor (H264)</h2>
+            <div class="sei-tools">
+              <button id="extractSei">Extract SEI From Selected</button>
+              <button id="applySei">Apply SEI Edit</button>
+            </div>
+            <div id="seiMeta" class="sei-meta">No SEI extracted.</div>
+            <textarea id="seiText" class="sei-text" placeholder="SEI NAL hex bytes (e.g. 06 05 ...)."></textarea>
+            <div class="sei-tools-mini">
+              <button id="seiHexToAscii">Hex -> ASCII</button>
+              <button id="seiAsciiToHex">ASCII -> Hex</button>
+            </div>
+            <textarea id="seiAsciiText" class="sei-text" placeholder="ASCII view/editor (currently ASCII only)."></textarea>
+          </section>
           <div class="monitor-side">
             <section class="monitor-info-card">
               <h2 class="title">Selected Frame</h2>
@@ -522,11 +562,16 @@
       buildFrameReferenceRelations,
       playAudioFrameWithWebAudio,
       decodeAudioFramesToBufferWithWebAudio,
-      sliceFrameBytes,
       decodeVideoFrameWithStrategies as libDecodeVideoFrameWithStrategies,
       decodeGopByMseFallback as libDecodeGopByMseFallback,
       ensureTinyH264WorkerReady as libEnsureTinyH264WorkerReady,
       releaseTinyH264Worker as libReleaseTinyH264Worker,
+      bytesToHex,
+      hexToBytes,
+      bytesToAscii,
+      asciiToBytes,
+      extractH264SeiFromFrame,
+      applyH264SeiPatch,
     } from "../lib/browser/index.js";
     import { VideoSegmentPlayer } from "../lib/player/index.js";
 
@@ -561,6 +606,13 @@
     const bitrateChartEl = document.getElementById("bitrateChart");
     const avSyncChartEl = document.getElementById("avSyncChart");
     const failureTextEl = document.getElementById("failureText");
+    const extractSeiBtn = document.getElementById("extractSei");
+    const applySeiBtn = document.getElementById("applySei");
+    const seiHexToAsciiBtn = document.getElementById("seiHexToAscii");
+    const seiAsciiToHexBtn = document.getElementById("seiAsciiToHex");
+    const seiMetaEl = document.getElementById("seiMeta");
+    const seiTextEl = document.getElementById("seiText");
+    const seiAsciiTextEl = document.getElementById("seiAsciiText");
     const copyFailureBtn = document.getElementById("copyFailure");
     const clearFailureBtn = document.getElementById("clearFailure");
     const canvasEl = document.getElementById("videoCanvas");
@@ -581,6 +633,7 @@
     let currentAudioCtx = null;
     let currentHexBytes = null;
     let currentHexBaseOffset = 0;
+    let currentHexRenderSignature = "";
     let currentFieldRows = [];
     let activeFieldKey = null;
     let segmentPlayToken = 0;
@@ -600,6 +653,7 @@
     let timelineAudioTimesSorted = [];
     let frameListScrollRaf = 0;
     let frameListInfoCache = new Map();
+    let seiEditContext = null;
 
     const FRAME_ROW_H = 28;
     const FRAME_HEADER_H = 30;
@@ -800,6 +854,7 @@
       renderSelectedInfo(sf);
       renderHex(sf);
       renderSelectedTree(sf);
+      refreshSeiEditorForSelection();
       if (opts.scroll !== false) scrollFrameRowIntoView(shownIdx);
     }
     function frameOffsetValue(f) {
@@ -874,36 +929,14 @@
       }
       return streams.find((s) => s.codecType === "video") || null;
     }
-    function extractPayloadForNaluParse(rf) {
-      const fileData = result?.formatSpecific?.fileData || null;
-      const fs = rf?.formatSpecific || {};
-      let payload = sliceFrameBytes(rf, fileData);
-      if (!(payload instanceof Uint8Array) || payload.length === 0) {
-        return { payload: null, baseOffset: 0 };
-      }
-      let baseOffset = Number.isFinite(rf?.offset) ? rf.offset : (Number.isFinite(fs?.offset) ? fs.offset : 0);
-      // FLV: adapt from chunk-0008 e2() payload extraction (strip tag header + avc/hevc packet header)
-      if (result?.format?.formatName === "flv" || fs?.tagType === 9 || payload[0] === 9) {
-        if (payload[0] === 9 && payload.length > 16) {
-          payload = payload.slice(11);
-          baseOffset += 11;
-          const codecId = payload[0] & 0x0f;
-          const packetType = payload[1];
-          if ((codecId === 7 || codecId === 12) && packetType === 1 && payload.length > 5) {
-            payload = payload.slice(5);
-            baseOffset += 5;
-          }
-        } else if (payload.length > 5 && payload[1] === 1) {
-          payload = payload.slice(5);
-          baseOffset += 5;
-        }
-      }
-      return { payload, baseOffset };
-    }
     function setActiveFieldByKey(key) {
       activeFieldKey = key || null;
       renderSelectedTree(selectedFrame());
       renderHex(selectedFrame());
+      const hi = hexWrapEl.querySelector(".hex-b.hi");
+      if (hi && typeof hi.scrollIntoView === "function") {
+        hi.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      }
     }
     function findFieldByByteIndex(localByteIndex) {
       const abs = currentHexBaseOffset + localByteIndex;
@@ -1004,12 +1037,36 @@
         const txt = rel.relations.map((r) => `${r.label}:${r.frame.index}`).join(", ");
         rows.push(["refStatus", rel.status]);
         rows.push(["references", txt || "-"]);
+        const detail = buildFrameDetail(frame);
+        const nalus = Array.isArray(detail?.nalus) ? detail.nalus : [];
+        const seiNalus = nalus.filter((n) => {
+          const t = Number(n?._nal_unit_type_value);
+          if (t === 6) return true;
+          const txtType = String(n?.nal_unit_type || "");
+          return /^6\b/.test(txtType) || txtType.includes("SEI");
+        });
+        const payloadTypeSet = new Set();
+        for (const n of seiNalus) {
+          for (const [k, v] of Object.entries(n || {})) {
+            if (!/^_payloadType\[\d+\]_value$/.test(k)) continue;
+            const num = Number(v);
+            if (Number.isFinite(num)) payloadTypeSet.add(num);
+          }
+        }
+        rows.push(["naluCount", nalus.length || 0]);
+        rows.push(["seiCount", seiNalus.length || 0]);
+        rows.push(["seiPayloadTypes", payloadTypeSet.size ? Array.from(payloadTypeSet).sort((a, b) => a - b).join(",") : "-"]);
       }
       selectedInfoEl.innerHTML = rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join("");
     }
     function renderHex(frame) {
+      const prevSignature = currentHexRenderSignature;
+      const prevScrollTop = hexWrapEl.scrollTop;
       hexWrapEl.innerHTML = "";
-      if (!frame || !result) return;
+      if (!frame || !result) {
+        currentHexRenderSignature = "";
+        return;
+      }
       const primaryBytes = result?.formatSpecific?.fileData || null;
       const bytes = pickHexSourceBytes(frame._rawFrame, primaryBytes);
       currentHexBytes = bytes instanceof Uint8Array ? bytes : null;
@@ -1018,6 +1075,7 @@
         ? frame._rawFrame.offset
         : (Number.isFinite(fs.offset) ? fs.offset : 0);
       if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+        currentHexRenderSignature = "";
         hexWrapEl.innerHTML = `<div class="muted" style="padding:8px">No frame payload bytes.</div>`;
         return;
       }
@@ -1037,6 +1095,9 @@
         highlightOffset,
         highlightLength,
       });
+      const sigHead = bytes.length > 0 ? bytes[0] : -1;
+      const sigTail = bytes.length > 0 ? bytes[bytes.length - 1] : -1;
+      currentHexRenderSignature = `${currentHexBaseOffset}:${bytes.length}:${sigHead}:${sigTail}`;
       hexWrapEl.innerHTML = rows.map((r) => {
         const absOffsetHex = (r.rowStart + currentHexBaseOffset).toString(16).toUpperCase().padStart(8, "0");
         const hs = r.bytes
@@ -1044,6 +1105,57 @@
           .join(" ");
         return `<div class="hex-row"><div class="hex-off">${absOffsetHex}</div><div class="hex-bytes">${hs}</div><div class="hex-ascii">${esc(r.ascii || "")}</div></div>`;
       }).join("");
+      if (currentHexRenderSignature === prevSignature) {
+        hexWrapEl.scrollTop = prevScrollTop;
+      } else {
+        hexWrapEl.scrollTop = 0;
+      }
+    }
+    
+    function clearSeiEditor(note = "No SEI extracted.") {
+      seiEditContext = null;
+      if (seiMetaEl) seiMetaEl.textContent = note;
+      if (seiTextEl) seiTextEl.value = "";
+      if (seiAsciiTextEl) seiAsciiTextEl.value = "";
+    }
+    function extractSeiFromSelectedFrame(frame = selectedFrame(), opts = {}) {
+      const { silent = false } = opts;
+      const sf = frame;
+      if (!sf || sf._mediaType !== "video") {
+        clearSeiEditor("Current frame has no video SEI.");
+        if (silent) return false;
+        throw new Error("Select a video frame first.");
+      }
+      try {
+        const stream = getVideoStreamByIndex(sf?._rawFrame?.streamIndex);
+        const out = extractH264SeiFromFrame(sf, result, stream);
+        seiEditContext = out.context;
+        seiTextEl.value = bytesToHex(out.seiBytes);
+        if (seiAsciiTextEl) seiAsciiTextEl.value = bytesToAscii(out.seiBytes);
+        const { transport, absOffset, payloadTypes } = out.context;
+        seiMetaEl.textContent = `frame=${sf.index}, transport=${transport}, offset=0x${absOffset.toString(16).toUpperCase()}, naluBytes=${out.seiBytes.length}, payloadTypes=${payloadTypes.join(",") || "-"}`;
+        return true;
+      } catch (err) {
+        clearSeiEditor(err?.message || "SEI extract failed.");
+        if (silent) return false;
+        throw err;
+      }
+    }
+    function refreshSeiEditorForSelection() {
+      extractSeiFromSelectedFrame(selectedFrame(), { silent: true });
+    }
+    async function applySeiEditsToSelected() {
+      if (!(currentFileBytes instanceof Uint8Array) || currentFileBytes.length <= 0) throw new Error("No source bytes loaded.");
+      if (!seiEditContext) throw new Error("Extract SEI first.");
+      const sf = selectedFrame();
+      if (!sf || Number(sf.index) !== Number(seiEditContext.frameIndex)) throw new Error("Selected frame changed; extract SEI again.");
+      const edited = hexToBytes(seiTextEl.value);
+      const { patchedBytes: patched, delta } = applyH264SeiPatch(currentFileBytes, seiEditContext, edited);
+      const keepFrameIndex = Number(seiEditContext.frameIndex);
+      await applyAnalyzeResult(patched, currentSourceMeta || {});
+      syncPlaybackCursorByGlobalFrameIndex(keepFrameIndex, { scroll: true });
+      setStatus(`SEI updated in-memory @ frame ${keepFrameIndex} (delta=${delta >= 0 ? "+" : ""}${delta} bytes). Click Save File to export patched media.`);
+      extractSeiFromSelectedFrame();
     }
     function getFrameTimeSec(f) {
       const rf = f?._rawFrame || {};
@@ -1963,6 +2075,7 @@
       renderHex(sf);
       renderSelectedTree(sf);
       renderStatsPanel();
+      refreshSeiEditorForSelection();
       scheduleDrawNleTimeline();
     }
 
@@ -2344,6 +2457,7 @@
       renderSelectedInfo(sf);
       renderHex(sf);
       renderSelectedTree(sf);
+      refreshSeiEditorForSelection();
       decodeSelectedVideoFrame().catch((err) => {
         console.error("decodeSelectedVideoFrame guard", err);
         setStatus(`Decode setup failed: ${err?.message || String(err)}`);
@@ -2499,6 +2613,36 @@
       failureTextEl.value = "";
       setStatus("Failure snapshot cleared.");
     });
+    extractSeiBtn?.addEventListener("click", () => {
+      try {
+        extractSeiFromSelectedFrame();
+      } catch (err) {
+        setStatus(`SEI extract failed: ${err?.message || String(err)}`);
+      }
+    });
+    applySeiBtn?.addEventListener("click", () => {
+      applySeiEditsToSelected().catch((err) => {
+        setStatus(`SEI apply failed: ${err?.message || String(err)}`);
+      });
+    });
+    seiHexToAsciiBtn?.addEventListener("click", () => {
+      try {
+        const bytes = hexToBytes(seiTextEl?.value || "");
+        if (seiAsciiTextEl) seiAsciiTextEl.value = bytesToAscii(bytes);
+        setStatus(`SEI Hex -> ASCII done (${bytes.length} bytes).`);
+      } catch (err) {
+        setStatus(`SEI Hex->ASCII failed: ${err?.message || String(err)}`);
+      }
+    });
+    seiAsciiToHexBtn?.addEventListener("click", () => {
+      try {
+        const bytes = asciiToBytes(seiAsciiTextEl?.value || "");
+        if (seiTextEl) seiTextEl.value = bytesToHex(bytes);
+        setStatus(`SEI ASCII -> Hex done (${bytes.length} bytes).`);
+      } catch (err) {
+        setStatus(`SEI ASCII->Hex failed: ${err?.message || String(err)}`);
+      }
+    });
 
     clearBtn.addEventListener("click", () => {
       result = null;
@@ -2523,6 +2667,7 @@
       });
       currentHexBytes = null;
       currentHexBaseOffset = 0;
+      currentHexRenderSignature = "";
       currentFieldRows = [];
       activeFieldKey = null;
       decodeExceptionFrameIndexes = new Set();
@@ -2537,6 +2682,7 @@
       if (framesScrollEl) framesScrollEl.scrollTop = 0;
       clearPlaybackCanvas();
       playheadSec = null;
+      clearSeiEditor();
       applyVideoPreviewShellSizing();
       scheduleDrawNleTimeline();
       setStatus("Cleared.");
