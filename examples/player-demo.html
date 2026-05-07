@@ -129,6 +129,13 @@
       object-fit: contain;
       background: #000;
     }
+    .viewer .mse-video {
+      display: none;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
     .viewer-empty {
       position: absolute;
       color: #6d7788;
@@ -152,6 +159,7 @@
       font-size: 12px;
     }
     .range-field input { width: 98px; }
+    .range-field select { min-width: 92px; }
     .status {
       min-width: 0;
       overflow: hidden;
@@ -290,12 +298,19 @@
         </div>
         <div class="viewer">
           <canvas id="videoCanvas"></canvas>
+          <video id="mseVideo" class="mse-video" playsinline controls></video>
           <div id="viewerEmpty" class="viewer-empty">Load media to preview decoded frames</div>
         </div>
         <div class="transport">
           <button id="playSelection" class="primary">Play Selection</button>
           <button id="playAll">Play All</button>
           <button id="stop" class="danger">Stop</button>
+          <label class="range-field">Mode
+            <select id="playbackMode">
+              <option value="canvas">Canvas</option>
+              <option value="mse">MSE</option>
+            </select>
+          </label>
           <label class="range-field">In <input id="inSec" type="number" step="0.001" /></label>
           <label class="range-field">Out <input id="outSec" type="number" step="0.001" /></label>
           <div class="status" id="status">Ready.</div>
@@ -323,7 +338,7 @@
       collectWebSocketBinary,
       WS_STREAM_DEFAULT_FETCH_SECONDS,
     } from "../lib/streaming/wsStreamCapture.js";
-    import { AnalyzedMediaPlayer, createPlayerTimelineSnapshot } from "../lib/player/index.js";
+    import { AnalyzedMediaPlayer, createPlayerTimelineSnapshot, MseSourceController } from "../lib/player/index.js";
 
     const fileEl = document.getElementById("file");
     const sourceUrlEl = document.getElementById("sourceUrl");
@@ -331,6 +346,7 @@
     const loadFileBtn = document.getElementById("loadFile");
     const loadUrlBtn = document.getElementById("loadUrl");
     const canvasEl = document.getElementById("videoCanvas");
+    const mseVideoEl = document.getElementById("mseVideo");
     const timelineCanvasEl = document.getElementById("timelineCanvas");
     const summaryEl = document.getElementById("summary");
     const streamsEl = document.getElementById("streams");
@@ -341,6 +357,7 @@
     const viewerEmptyEl = document.getElementById("viewerEmpty");
     const inSecEl = document.getElementById("inSec");
     const outSecEl = document.getElementById("outSec");
+    const playbackModeEl = document.getElementById("playbackMode");
     const playSelectionBtn = document.getElementById("playSelection");
     const playAllBtn = document.getElementById("playAll");
     const stopBtn = document.getElementById("stop");
@@ -351,6 +368,8 @@
     let mediaInfo = null;
     let result = null;
     let timeline = null;
+    let currentBytes = null;
+    let activeMseToken = 0;
     let playheadSec = 0;
     let drawRaf = 0;
 
@@ -371,6 +390,13 @@
       onError: (err) => {
         pushLog(`error: ${err?.message || String(err)}`);
       },
+    });
+
+    const mseController = new MseSourceController({
+      videoEl: mseVideoEl,
+      onLog: pushLog,
+      onStatus: setStatus,
+      formatTime: fmt,
     });
 
     function setStatus(text) {
@@ -395,10 +421,53 @@
       return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
     }
 
+    function fmtMs(ms) {
+      const n = Number(ms);
+      if (!Number.isFinite(n)) return "-";
+      return `${(n / 1000).toFixed(3)}s`;
+    }
+
+    function fmtRanges(ranges) {
+      if (!ranges || typeof ranges.length !== "number" || ranges.length <= 0) return "empty";
+      const out = [];
+      for (let i = 0; i < ranges.length; i++) {
+        try {
+          out.push(`${fmt(ranges.start(i))}-${fmt(ranges.end(i))}`);
+        } catch {
+          // Ignore stale TimeRanges entries.
+        }
+      }
+      return out.length ? out.join(", ") : "empty";
+    }
+
     function updateTimecode() {
       const end = Number(outSecEl.value);
       const total = Number.isFinite(end) ? end : timeline?.endSec || 0;
       timecodeEl.textContent = `${fmt(playheadSec)} / ${fmt(total)}`;
+    }
+
+    function showCanvasPreview() {
+      canvasEl.style.display = "block";
+      mseVideoEl.style.display = "none";
+    }
+
+    function showMsePreview() {
+      canvasEl.style.display = "none";
+      mseVideoEl.style.display = "block";
+      viewerEmptyEl.style.display = "none";
+    }
+
+    function stopMsePlayback({ release = false } = {}) {
+      activeMseToken += 1;
+      mseController.stopPlayback({ release });
+    }
+
+    async function createMseSource(bytes) {
+      return mseController.createSource({ bytes, result, mediaInfo });
+    }
+
+    async function seekMseTo(sec) {
+      return mseController.seekTo(sec);
     }
 
     async function fetchBytes(url) {
@@ -468,6 +537,10 @@
 
     async function analyzeBytes(bytes, fileMeta = {}) {
       setStatus("Analyzing media...");
+      player.stop();
+      stopMsePlayback({ release: true });
+      showCanvasPreview();
+      currentBytes = bytes;
       result = await analyzeByDetectedFormat(bytes, { fileMeta });
       const format = result?.format?.formatName || "unknown";
       mediaInfo = { [format]: result };
@@ -613,8 +686,76 @@
       return { start, end };
     }
 
+    async function playRangeMse(start, end) {
+      if (!(currentBytes instanceof Uint8Array) || currentBytes.length <= 0) {
+        throw new Error("No source bytes available for MSE playback.");
+      }
+      player.stop();
+      stopMsePlayback({ release: true });
+      const token = activeMseToken;
+      showMsePreview();
+      stateLabelEl.textContent = "mse";
+      const { mode, mime, reason, durationSec, sourceStartSec } = await createMseSource(currentBytes);
+      if (token !== activeMseToken) return { stopped: true };
+      const label =
+        mode === "mse-sourcebuffer"
+          ? "MSE"
+          : mode === "mse-transmuxed"
+            ? "MSE fMP4 transmux"
+            : "Native video fallback";
+      const isTransmuxed = mode === "mse-transmuxed";
+      const mediaStartOffset = isTransmuxed && Number.isFinite(Number(sourceStartSec)) ? Number(sourceStartSec) : 0;
+      const mediaDuration = Number(durationSec);
+      const seekStart = isTransmuxed ? Math.max(0, start - mediaStartOffset) : start;
+      let stopAt = isTransmuxed ? Math.max(seekStart, end - mediaStartOffset) : end;
+      if (isTransmuxed && Number.isFinite(mediaDuration) && mediaDuration > 0) {
+        stopAt = Math.min(mediaDuration, stopAt);
+      }
+      const reasonText = reason ? ` | ${reason}` : "";
+      const effectiveText = isTransmuxed ? ` | mse range ${fmt(seekStart)} - ${fmt(stopAt)}` : "";
+      setStatus(`${label} play: ${fmt(start)} - ${fmt(end)} (${mime})${reasonText}${effectiveText}`);
+      await seekMseTo(seekStart);
+      if (token !== activeMseToken) return { stopped: true };
+      pushLog(`[mse play] seekTarget=${fmt(seekStart)}, actual=${fmt(mseVideoEl.currentTime)}, ${mseController.describeVideoState()}`);
+      const onTimeUpdate = () => {
+        if (token !== activeMseToken) return;
+        playheadSec = mediaStartOffset + mseVideoEl.currentTime;
+        updateTimecode();
+        drawTimeline();
+      };
+      mseVideoEl.addEventListener("timeupdate", onTimeUpdate);
+      try {
+        onTimeUpdate();
+        await mseVideoEl.play();
+        while (token === activeMseToken && !mseVideoEl.paused && mseVideoEl.currentTime < stopAt) {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+        }
+        if (token !== activeMseToken) return { stopped: true };
+        mseVideoEl.pause();
+        const finalMediaTime = Math.min(stopAt, mseVideoEl.currentTime);
+        playheadSec = mediaStartOffset + finalMediaTime;
+        updateTimecode();
+        drawTimeline();
+        stateLabelEl.textContent = "idle";
+        if (mseVideoEl.ended && mseVideoEl.currentTime + 0.25 < stopAt) {
+          setStatus(`MSE ended early at ${fmt(mediaStartOffset + mseVideoEl.currentTime)}; expected ${fmt(mediaStartOffset + stopAt)}.`);
+        } else {
+          setStatus("MSE play done.");
+        }
+        return { stopped: false };
+      } finally {
+        mseVideoEl.removeEventListener("timeupdate", onTimeUpdate);
+      }
+    }
+
     async function playRange(start, end) {
       if (!mediaInfo) throw new Error("No media loaded.");
+      if (playbackModeEl?.value === "mse") {
+        await playRangeMse(start, end);
+        return;
+      }
+      stopMsePlayback({ release: true });
+      showCanvasPreview();
       await player.playSegment({ startSec: start, endSec: end, video: true, audio: true });
     }
 
@@ -668,6 +809,7 @@
 
     stopBtn.addEventListener("click", () => {
       player.stop();
+      stopMsePlayback({ release: false });
       setStatus("Stopped.");
       drawTimeline();
     });
