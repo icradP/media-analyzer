@@ -3,7 +3,7 @@
 `media-analyzer` 是一个媒体解析与浏览器侧分析工具集合，包含：
 
 - `lib/`：可复用的解析与播放能力（MP4/FLV/TS/PS、多格式帧适配、浏览器解码辅助）
-- `examples/`：示例页面（媒体总览、逐帧分析）
+- `examples/`：示例页面（媒体总览、逐帧分析、播放器）
 
 ## 快速开始
 
@@ -20,6 +20,7 @@
 - 在线示例首页（GitHub Pages）：[https://icradp.github.io/media-analyzer/](https://icradp.github.io/media-analyzer/)
 - 在线示例（media-overview）：[https://icradp.github.io/media-analyzer/examples/media-overview-demo.html](https://icradp.github.io/media-analyzer/examples/media-overview-demo.html)
 - 在线示例（frame-analysis）：[https://icradp.github.io/media-analyzer/examples/frame-analysis-demo.html](https://icradp.github.io/media-analyzer/examples/frame-analysis-demo.html)
+- 在线示例（player）：[https://icradp.github.io/media-analyzer/examples/player-demo.html](https://icradp.github.io/media-analyzer/examples/player-demo.html)
 
 ## 测试解析通过项
 
@@ -53,6 +54,7 @@ python3 -m http.server 8080
 
 - `http://127.0.0.1:8080/examples/media-overview-demo.html`
 - `http://127.0.0.1:8080/examples/frame-analysis-demo.html`
+- `http://127.0.0.1:8080/examples/player-demo.html`
 
 ### 2) 在代码中调用统一分析入口
 

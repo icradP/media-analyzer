@@ -27,6 +27,18 @@
     .toolbar, .subbar {
       display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;
     }
+    .url-capture-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .url-capture-field input {
+      width: 86px;
+      padding: 8px 9px;
+    }
     input, button, select {
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -90,10 +102,9 @@
     }
     .video-preview-shell canvas {
       display: block;
-      max-width: 100%;
-      max-height: 100%;
-      width: auto;
-      height: auto;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
       background: #000;
     }
     .transport {
@@ -277,9 +288,9 @@
     .field-empty { padding: 8px; color: var(--muted); }
     .stats-summary {
       display: grid;
-      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 8px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       font-size: 12px;
     }
     .stats-item {
@@ -289,14 +300,50 @@
       background: #101726;
     }
     .stats-item .k { color: var(--muted); display: block; margin-bottom: 2px; }
-    .chart-block { margin-top: 8px; }
-    .chart-title { font-size: 12px; color: #c8dcff; margin-bottom: 4px; }
-    .chart-canvas {
-      width: 100%;
-      height: 140px;
+    .chart-block {
+      margin-top: 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: #0f1622;
+      padding: 8px;
+    }
+    .chart-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+      min-width: 0;
+    }
+    .chart-title {
+      min-width: 0;
+      font-size: 12px;
+      line-height: 1.25;
+      color: #d6e6ff;
+      overflow-wrap: anywhere;
+    }
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 4px 8px;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 4px; }
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .chart-canvas {
+      width: 100%;
+      height: 172px;
+      display: block;
+      border-radius: 6px;
+      background: #0b111b;
     }
     .failure-tools { display: flex; gap: 8px; margin-bottom: 6px; }
     .failure-text {
@@ -327,6 +374,10 @@
       <input id="file" type="file" />
       <button id="analyze">Analyze</button>
       <input id="sourceUrl" type="url" placeholder="http(s)://... or ws(s)://..." style="min-width:360px" />
+      <span class="url-capture-field">
+        <label for="urlFetchDuration">拉流(s)</label>
+        <input id="urlFetchDuration" type="number" min="1" max="600" step="1" value="10" title="仅 ws/wss 拉流采集使用；http(s) 会直接读取完整响应" />
+      </span>
       <button id="analyzeUrl">Analyze URL</button>
       <button id="saveCapture" disabled>Save File</button>
       <button id="decodeVideo">Decode Video Frame</button>
@@ -407,19 +458,37 @@
       </section>
 
       <section class="right-grid">
-        <section class="card">
+        <section class="card stats-card">
           <h2 class="title">Stats Panel (Interval / Bitrate / A-V TS)</h2>
           <div id="statsSummary" class="stats-summary"></div>
           <div class="chart-block">
-            <div class="chart-title">Frame Interval (ms)</div>
+            <div class="chart-head">
+              <div class="chart-title">Frame Interval (ms)</div>
+              <div class="chart-legend">
+                <span class="legend-item" style="color:#5da8ff"><i class="legend-dot"></i>Video</span>
+                <span class="legend-item" style="color:#7ad17a"><i class="legend-dot"></i>Audio</span>
+              </div>
+            </div>
             <canvas id="intervalChart" class="chart-canvas"></canvas>
           </div>
           <div class="chart-block">
-            <div class="chart-title">Bitrate per Second (kbps)</div>
+            <div class="chart-head">
+              <div class="chart-title">Bitrate per Second (kbps)</div>
+              <div class="chart-legend">
+                <span class="legend-item" style="color:#ffd166"><i class="legend-dot"></i>Total</span>
+                <span class="legend-item" style="color:#5da8ff"><i class="legend-dot"></i>Video</span>
+                <span class="legend-item" style="color:#7ad17a"><i class="legend-dot"></i>Audio</span>
+              </div>
+            </div>
             <canvas id="bitrateChart" class="chart-canvas"></canvas>
           </div>
           <div class="chart-block">
-            <div class="chart-title">A-V Timestamp Diff (videoTs - nearestAudioTs, ms)</div>
+            <div class="chart-head">
+              <div class="chart-title">A-V Timestamp Diff (videoTs - nearestAudioTs, ms)</div>
+              <div class="chart-legend">
+                <span class="legend-item" style="color:#ff7aa2"><i class="legend-dot"></i>Delta</span>
+              </div>
+            </div>
             <canvas id="avSyncChart" class="chart-canvas"></canvas>
           </div>
         </section>
@@ -464,6 +533,7 @@
     const fileEl = document.getElementById("file");
     const analyzeBtn = document.getElementById("analyze");
     const sourceUrlEl = document.getElementById("sourceUrl");
+    const urlFetchDurationEl = document.getElementById("urlFetchDuration");
     const analyzeUrlBtn = document.getElementById("analyzeUrl");
     const saveCaptureBtn = document.getElementById("saveCapture");
     const decodeVideoBtn = document.getElementById("decodeVideo");
@@ -551,6 +621,11 @@
       } catch {
         return "remote-stream.bin";
       }
+    }
+    function getUrlFetchDurationSec() {
+      const raw = Number(urlFetchDurationEl?.value);
+      if (!Number.isFinite(raw)) return 10;
+      return Math.max(1, Math.min(600, Math.round(raw)));
     }
     function concatUint8(chunks, total) {
       const out = new Uint8Array(total);
@@ -1451,6 +1526,7 @@
         resizeBumpRaf = requestAnimationFrame(() => {
           resizeBumpRaf = 0;
           scheduleDrawNleTimeline();
+          if (shownFrames.length) renderStatsPanel();
         });
       });
       if (typeof ResizeObserver !== "undefined") {
@@ -1460,6 +1536,7 @@
           roBump = requestAnimationFrame(() => {
             roBump = 0;
             scheduleDrawNleTimeline();
+            if (shownFrames.length) renderStatsPanel();
           });
         });
         ro.observe(timelineCanvasEl);
@@ -1610,22 +1687,29 @@
     function drawSeriesChart(canvas, seriesList, opts = {}) {
       if (!(canvas instanceof HTMLCanvasElement)) return;
       const width = Math.max(320, Math.floor(canvas.clientWidth || 900));
-      const height = 140;
-      canvas.width = width;
-      canvas.height = height;
+      const height = Math.max(150, Math.floor(canvas.clientHeight || 172));
+      const dpr = Math.max(1, Math.min(3, Number(window.devicePixelRatio) || 1));
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = "#0f1622";
+      ctx.fillStyle = "#0b111b";
       ctx.fillRect(0, 0, width, height);
-      const pad = { l: 38, r: 10, t: 10, b: 22 };
+      const pad = { l: 58, r: 14, t: 16, b: 34 };
       const pw = width - pad.l - pad.r;
       const ph = height - pad.t - pad.b;
-      const all = seriesList.flatMap((s) => s.points || []);
+      const all = seriesList
+        .flatMap((s) => s.points || [])
+        .filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
       if (all.length === 0) {
         ctx.fillStyle = "#97a3b6";
-        ctx.font = "12px ui-monospace";
-        ctx.fillText("No data", 12, 20);
+        ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("No data", width / 2, height / 2);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         return;
       }
       let minX = Math.min(...all.map((p) => p.x));
@@ -1633,31 +1717,92 @@
       let minY = Math.min(...all.map((p) => p.y));
       let maxY = Math.max(...all.map((p) => p.y));
       if (opts.zeroY) minY = Math.min(0, minY);
+      if (opts.zeroY) maxY = Math.max(0, maxY);
       if (minX === maxX) maxX = minX + 1;
-      if (minY === maxY) maxY = minY + 1;
+      if (minY === maxY) {
+        const spread = Math.max(1, Math.abs(minY) * 0.1);
+        minY -= spread;
+        maxY += spread;
+      } else {
+        const spread = (maxY - minY) * 0.08;
+        minY -= spread;
+        maxY += spread;
+        if (opts.zeroY && minY > 0) minY = 0;
+      }
       const sx = (x) => pad.l + ((x - minX) / (maxX - minX)) * pw;
       const sy = (y) => pad.t + ph - ((y - minY) / (maxY - minY)) * ph;
-      ctx.strokeStyle = "#243149";
+      const fmt = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return "-";
+        const abs = Math.abs(n);
+        if (abs >= 1000) return n.toFixed(0);
+        if (abs >= 100) return n.toFixed(1);
+        if (abs >= 10) return n.toFixed(2);
+        return n.toFixed(3);
+      };
+      ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.textBaseline = "middle";
       ctx.lineWidth = 1;
+
+      const yTicks = 4;
+      ctx.strokeStyle = "#202b3f";
+      ctx.fillStyle = "#8fa0b8";
+      ctx.textAlign = "right";
+      for (let i = 0; i <= yTicks; i++) {
+        const ratio = i / yTicks;
+        const yValue = maxY - (maxY - minY) * ratio;
+        const y = pad.t + ph * ratio;
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(pad.l + pw, y);
+        ctx.stroke();
+        ctx.textBaseline = i === 0 ? "top" : i === yTicks ? "bottom" : "middle";
+        ctx.fillText(fmt(yValue), pad.l - 8, y);
+      }
+
+      const xTicks = width < 520 ? 2 : 4;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (let i = 0; i <= xTicks; i++) {
+        const ratio = i / xTicks;
+        const xValue = minX + (maxX - minX) * ratio;
+        const x = pad.l + pw * ratio;
+        ctx.strokeStyle = "#182235";
+        ctx.beginPath();
+        ctx.moveTo(x, pad.t);
+        ctx.lineTo(x, pad.t + ph);
+        ctx.stroke();
+        ctx.fillStyle = "#8fa0b8";
+        ctx.fillText(fmt(xValue), x, pad.t + ph + 7);
+      }
+
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#34445d";
       ctx.beginPath();
       ctx.moveTo(pad.l, pad.t);
       ctx.lineTo(pad.l, pad.t + ph);
       ctx.lineTo(pad.l + pw, pad.t + ph);
       ctx.stroke();
+
       if (minY < 0 && maxY > 0) {
         const y0 = sy(0);
-        ctx.strokeStyle = "#334869";
+        ctx.strokeStyle = "#49668b";
         ctx.beginPath();
         ctx.moveTo(pad.l, y0);
         ctx.lineTo(pad.l + pw, y0);
         ctx.stroke();
       }
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(pad.l, pad.t, pw, ph);
+      ctx.clip();
       for (const s of seriesList) {
-        const pts = s.points || [];
+        const pts = (s.points || []).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
         if (pts.length === 0) continue;
         ctx.strokeStyle = s.color || "#5da8ff";
         ctx.fillStyle = s.color || "#5da8ff";
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
         pts.forEach((p, i) => {
           const x = sx(p.x);
@@ -1666,13 +1811,20 @@
           else ctx.lineTo(x, y);
         });
         ctx.stroke();
+        if (pts.length === 1) {
+          ctx.beginPath();
+          ctx.arc(sx(pts[0].x), sy(pts[0].y), 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
-      ctx.fillStyle = "#97a3b6";
-      ctx.font = "11px ui-monospace";
-      ctx.fillText(`x:${opts.xLabel || ""}`, pad.l, height - 6);
-      ctx.fillText(`y:${opts.yLabel || ""}`, 4, 12);
-      ctx.fillText(`${minY.toFixed(1)}`, 2, sy(minY));
-      ctx.fillText(`${maxY.toFixed(1)}`, 2, sy(maxY));
+      ctx.restore();
+
+      ctx.fillStyle = "#aab7cc";
+      ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign = "right";
+      if (opts.xLabel) ctx.fillText(opts.xLabel, width - pad.r, height - 7);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
     function renderStatsPanel() {
       const frames = shownFrames || [];
@@ -1704,7 +1856,7 @@
       };
       buildIntervals(video, "#5da8ff");
       buildIntervals(audio, "#7ad17a");
-      drawSeriesChart(intervalChartEl, intervalSeries, { xLabel: "frame index", yLabel: "ms", zeroY: true });
+      drawSeriesChart(intervalChartEl, intervalSeries, { xLabel: "frame index", zeroY: true });
 
       const buckets = new Map();
       for (const f of frames) {
@@ -1724,7 +1876,7 @@
         { color: "#5da8ff", points: seconds.map((s) => ({ x: s, y: (buckets.get(s).video || 0) / 1000 })) },
         { color: "#7ad17a", points: seconds.map((s) => ({ x: s, y: (buckets.get(s).audio || 0) / 1000 })) },
       ];
-      drawSeriesChart(bitrateChartEl, bitrateSeries, { xLabel: "second", yLabel: "kbps", zeroY: true });
+      drawSeriesChart(bitrateChartEl, bitrateSeries, { xLabel: "second", zeroY: true });
 
       const audioTs = audio.map(getFrameTimeSec).filter((v) => typeof v === "number").sort((a, b) => a - b);
       const avPts = [];
@@ -1744,7 +1896,6 @@
       }
       drawSeriesChart(avSyncChartEl, [{ color: "#ff7aa2", points: avPts }], {
         xLabel: "video frame index",
-        yLabel: "ms",
         zeroY: true,
       });
     }
@@ -1958,6 +2109,7 @@
         mediaInfo: resultMap,
         stream: vStream,
         canvas: canvasEl,
+        decodeStrategy: "frame-step",
         onStatus: setStatus,
         onFrame: (item) => {
           if (token !== segmentPlayToken) return;
@@ -2106,6 +2258,7 @@
     async function analyzeCurrentFile() {
       analyzeBtn.disabled = true;
       analyzeUrlBtn.disabled = true;
+      if (urlFetchDurationEl) urlFetchDurationEl.disabled = true;
       try {
         const f = fileEl.files?.[0];
         if (!f) throw new Error("Please select a media file.");
@@ -2123,28 +2276,34 @@
       } finally {
         analyzeBtn.disabled = false;
         analyzeUrlBtn.disabled = false;
+        if (urlFetchDurationEl) urlFetchDurationEl.disabled = false;
       }
     }
     async function analyzeFromUrl() {
       analyzeBtn.disabled = true;
       analyzeUrlBtn.disabled = true;
+      if (urlFetchDurationEl) urlFetchDurationEl.disabled = true;
       try {
         const urlText = String(sourceUrlEl?.value || "").trim();
         if (!urlText) throw new Error("Please input a URL.");
         const u = new URL(urlText);
         let bytes = null;
+        let urlFetchDurationSec = null;
+        let actualFetchTimeSec = null;
         if (u.protocol === "http:" || u.protocol === "https:") {
           setStatus(`Fetching ${urlText} ...`);
           bytes = await readBytesFromHttp(urlText);
         } else if (u.protocol === "ws:" || u.protocol === "wss:") {
+          urlFetchDurationSec = getUrlFetchDurationSec();
           setStatus(`Connecting ${urlText} ...`);
           const out = await collectWebSocketBinary(urlText, {
-            fetchDurationSec: 10,
+            fetchDurationSec: urlFetchDurationSec,
             onProgress: (msg) => {
               if (msg) setStatus(msg);
             },
           });
           bytes = out?.bytes instanceof Uint8Array ? out.bytes : null;
+          actualFetchTimeSec = Number.isFinite(out?.actualFetchTimeSec) ? out.actualFetchTimeSec : null;
         } else {
           throw new Error(`Unsupported URL protocol: ${u.protocol}`);
         }
@@ -2157,6 +2316,8 @@
           fileSize: bytes.length,
           fileType: "application/octet-stream",
           sourceUrl: urlText,
+          fetchDurationSec: urlFetchDurationSec,
+          actualFetchTimeSec,
           fetchedAt: Date.now(),
         });
       } catch (err) {
@@ -2164,6 +2325,7 @@
       } finally {
         analyzeBtn.disabled = false;
         analyzeUrlBtn.disabled = false;
+        if (urlFetchDurationEl) urlFetchDurationEl.disabled = false;
       }
     }
 

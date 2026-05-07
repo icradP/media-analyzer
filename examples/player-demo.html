@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MediaInsight Player Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0d12;
+      --panel: #121821;
+      --panel-2: #171f2b;
+      --line: #283344;
+      --text: #e8edf6;
+      --muted: #91a0b7;
+      --blue: #64a8ff;
+      --green: #58d798;
+      --orange: #ffae5d;
+      --red: #ff6f7d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    button, input, select {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #101722;
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+    }
+    button { cursor: pointer; }
+    button:disabled { opacity: 0.48; cursor: default; }
+    .app {
+      width: min(100vw - 20px, 1860px);
+      margin: 0 auto;
+      padding: 10px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      min-height: 100vh;
+    }
+    .topbar, .transport, .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: auto auto minmax(240px, 1fr) auto auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+    }
+    .brand {
+      display: flex;
+      flex-direction: column;
+      min-width: 160px;
+      line-height: 1.1;
+    }
+    .brand strong { color: var(--blue); letter-spacing: 0; }
+    .brand span { color: var(--muted); font-size: 12px; }
+    #sourceUrl { min-width: 260px; width: 100%; }
+    .url-capture-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .url-capture-field input {
+      width: 82px;
+      padding: 8px 9px;
+    }
+    .workspace {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(240px, 0.72fr) minmax(520px, 1.5fr) minmax(260px, 0.8fr);
+      gap: 8px;
+    }
+    .panel {
+      min-width: 0;
+      min-height: 0;
+      padding: 10px;
+      overflow: hidden;
+    }
+    .panel-title {
+      margin: 0 0 8px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .monitor-panel {
+      display: grid;
+      grid-template-rows: auto minmax(260px, 1fr) auto;
+      gap: 8px;
+    }
+    .monitor-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    .viewer {
+      position: relative;
+      min-height: 260px;
+      aspect-ratio: 16 / 9;
+      border: 1px solid #05070a;
+      border-radius: 8px;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .viewer canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    .viewer-empty {
+      position: absolute;
+      color: #6d7788;
+      font-size: 13px;
+      pointer-events: none;
+    }
+    .transport {
+      display: grid;
+      grid-template-columns: auto auto auto auto auto minmax(160px, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+    }
+    .primary { border-color: #3c72b0; background: #18304a; }
+    .danger { border-color: #7b3940; background: #351923; }
+    .range-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .range-field input { width: 98px; }
+    .status {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .timeline-panel {
+      display: grid;
+      grid-template-rows: auto 112px;
+      gap: 6px;
+    }
+    #timelineCanvas {
+      width: 100%;
+      height: 112px;
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0c1118;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 6px 10px;
+      font-size: 12px;
+    }
+    .kv .k { color: var(--muted); }
+    .streams, .log {
+      height: calc(100% - 24px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0e141e;
+    }
+    .log-panel {
+      align-self: start;
+      height: 360px;
+      display: flex;
+      flex-direction: column;
+    }
+    .log-panel .log {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+      overflow: auto;
+    }
+    .stream-row {
+      display: grid;
+      grid-template-columns: 54px 64px 1fr;
+      gap: 8px;
+      padding: 8px;
+      border-bottom: 1px solid #1e2836;
+      font-size: 12px;
+    }
+    .stream-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tag {
+      display: inline-flex;
+      width: fit-content;
+      border: 1px solid #36506e;
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: #cde4ff;
+      background: #12253b;
+    }
+    .meters {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .meter {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #0e141e;
+    }
+    .meter strong { display: block; font-size: 18px; }
+    .meter span { color: var(--muted); font-size: 11px; }
+    .log-line {
+      padding: 7px 8px;
+      border-bottom: 1px solid #1e2836;
+      color: #c6d3e6;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    @media (max-width: 1080px) {
+      .workspace { grid-template-columns: 1fr; }
+      .topbar, .transport { grid-template-columns: 1fr; }
+      .streams { max-height: 240px; }
+      .log-panel { height: 260px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <strong>MediaInsight Player</strong>
+        <span>analysis driven playback pipeline</span>
+      </div>
+      <input id="file" type="file" />
+      <input id="sourceUrl" type="url" placeholder="http(s):// media file or ws(s):// stream" />
+      <span class="url-capture-field">
+        <label for="urlFetchDuration">拉流(s)</label>
+        <input id="urlFetchDuration" type="number" min="1" max="600" step="1" value="10" title="仅 ws/wss 拉流采集使用；http(s) 会直接读取完整响应" />
+      </span>
+      <button id="loadFile" class="primary">Analyze File</button>
+      <button id="loadUrl">Analyze URL</button>
+    </header>
+
+    <section class="workspace">
+      <aside class="panel">
+        <h2 class="panel-title">Source</h2>
+        <div id="summary" class="kv">
+          <div class="k">format</div><div>-</div>
+          <div class="k">duration</div><div>-</div>
+          <div class="k">video</div><div>-</div>
+          <div class="k">audio</div><div>-</div>
+        </div>
+        <div class="meters">
+          <div class="meter"><strong id="videoCount">0</strong><span>video frames</span></div>
+          <div class="meter"><strong id="audioCount">0</strong><span>audio frames</span></div>
+          <div class="meter"><strong id="streamCount">0</strong><span>streams</span></div>
+        </div>
+        <h2 class="panel-title" style="margin-top:12px">Streams</h2>
+        <div id="streams" class="streams"></div>
+      </aside>
+
+      <section class="panel monitor-panel">
+        <div class="monitor-head">
+          <span id="timecode">00:00.000 / 00:00.000</span>
+          <span id="stateLabel">idle</span>
+        </div>
+        <div class="viewer">
+          <canvas id="videoCanvas"></canvas>
+          <div id="viewerEmpty" class="viewer-empty">Load media to preview decoded frames</div>
+        </div>
+        <div class="transport">
+          <button id="playSelection" class="primary">Play Selection</button>
+          <button id="playAll">Play All</button>
+          <button id="stop" class="danger">Stop</button>
+          <label class="range-field">In <input id="inSec" type="number" step="0.001" /></label>
+          <label class="range-field">Out <input id="outSec" type="number" step="0.001" /></label>
+          <div class="status" id="status">Ready.</div>
+        </div>
+      </section>
+
+      <aside class="panel log-panel">
+        <h2 class="panel-title">Playback Log</h2>
+        <div id="log" class="log"></div>
+      </aside>
+    </section>
+
+    <section class="panel timeline-panel">
+      <div class="monitor-head">
+        <span>Timeline</span>
+        <span>click to move playhead, buttons use In/Out range</span>
+      </div>
+      <canvas id="timelineCanvas" width="1200" height="112"></canvas>
+    </section>
+  </main>
+
+  <script type="module">
+    import { analyzeByDetectedFormat } from "../lib/codec/analyzeByDetectedFormat.js";
+    import {
+      collectWebSocketBinary,
+      WS_STREAM_DEFAULT_FETCH_SECONDS,
+    } from "../lib/streaming/wsStreamCapture.js";
+    import { AnalyzedMediaPlayer, createPlayerTimelineSnapshot } from "../lib/player/index.js";
+
+    const fileEl = document.getElementById("file");
+    const sourceUrlEl = document.getElementById("sourceUrl");
+    const urlFetchDurationEl = document.getElementById("urlFetchDuration");
+    const loadFileBtn = document.getElementById("loadFile");
+    const loadUrlBtn = document.getElementById("loadUrl");
+    const canvasEl = document.getElementById("videoCanvas");
+    const timelineCanvasEl = document.getElementById("timelineCanvas");
+    const summaryEl = document.getElementById("summary");
+    const streamsEl = document.getElementById("streams");
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+    const stateLabelEl = document.getElementById("stateLabel");
+    const timecodeEl = document.getElementById("timecode");
+    const viewerEmptyEl = document.getElementById("viewerEmpty");
+    const inSecEl = document.getElementById("inSec");
+    const outSecEl = document.getElementById("outSec");
+    const playSelectionBtn = document.getElementById("playSelection");
+    const playAllBtn = document.getElementById("playAll");
+    const stopBtn = document.getElementById("stop");
+    const videoCountEl = document.getElementById("videoCount");
+    const audioCountEl = document.getElementById("audioCount");
+    const streamCountEl = document.getElementById("streamCount");
+
+    let mediaInfo = null;
+    let result = null;
+    let timeline = null;
+    let playheadSec = 0;
+    let drawRaf = 0;
+
+    const player = new AnalyzedMediaPlayer({
+      canvas: canvasEl,
+      onStatus: setStatus,
+      onState: (state) => {
+        stateLabelEl.textContent = state;
+      },
+      onProgress: ({ currentTimeSec }) => {
+        playheadSec = currentTimeSec;
+        updateTimecode();
+        drawTimeline();
+      },
+      onFrame: () => {
+        viewerEmptyEl.style.display = "none";
+      },
+      onError: (err) => {
+        pushLog(`error: ${err?.message || String(err)}`);
+      },
+    });
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+      pushLog(text);
+    }
+
+    function pushLog(text) {
+      const line = document.createElement("div");
+      line.className = "log-line";
+      line.textContent = `${new Date().toLocaleTimeString()} ${text}`;
+      logEl.prepend(line);
+      while (logEl.children.length > 80) logEl.lastElementChild?.remove();
+    }
+
+    function fmt(sec) {
+      const n = Number(sec);
+      if (!Number.isFinite(n)) return "00:00.000";
+      const mm = Math.floor(Math.max(0, n) / 60);
+      const ss = Math.floor(Math.max(0, n) % 60);
+      const ms = Math.floor((Math.max(0, n) - Math.floor(Math.max(0, n))) * 1000);
+      return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+    }
+
+    function updateTimecode() {
+      const end = Number(outSecEl.value);
+      const total = Number.isFinite(end) ? end : timeline?.endSec || 0;
+      timecodeEl.textContent = `${fmt(playheadSec)} / ${fmt(total)}`;
+    }
+
+    async function fetchBytes(url) {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      return new Uint8Array(await res.arrayBuffer());
+    }
+
+    function getUrlFetchDurationSec() {
+      const raw = Number(urlFetchDurationEl?.value);
+      if (!Number.isFinite(raw)) return WS_STREAM_DEFAULT_FETCH_SECONDS;
+      return Math.max(1, Math.min(600, Math.round(raw)));
+    }
+
+    function inferNameFromUrl(urlText) {
+      try {
+        const u = new URL(urlText);
+        const tail = (u.pathname || "").split("/").filter(Boolean).pop();
+        return tail || u.hostname || "remote-media";
+      } catch {
+        return "remote-media";
+      }
+    }
+
+    async function fetchBytesFromUrl(urlText) {
+      const u = new URL(urlText);
+      if (u.protocol === "http:" || u.protocol === "https:") {
+        setStatus(`Fetching ${urlText} ...`);
+        return {
+          bytes: await fetchBytes(urlText),
+          meta: {
+            sourceUrl: urlText,
+            fileName: inferNameFromUrl(urlText),
+            fileType: "application/octet-stream",
+            fetchedAt: Date.now(),
+          },
+        };
+      }
+      if (u.protocol === "ws:" || u.protocol === "wss:") {
+        const fetchDurationSec = getUrlFetchDurationSec();
+        setStatus(`Connecting ${urlText} ...`);
+        const out = await collectWebSocketBinary(urlText, {
+          fetchDurationSec,
+          onProgress: (msg) => {
+            if (msg) setStatus(msg);
+          },
+        });
+        const bytes = out?.bytes instanceof Uint8Array ? out.bytes : null;
+        if (!(bytes instanceof Uint8Array) || bytes.length <= 0) {
+          throw new Error("No bytes received from WebSocket stream.");
+        }
+        return {
+          bytes,
+          meta: {
+            sourceUrl: urlText,
+            fileName: inferNameFromUrl(urlText),
+            fileType: "application/octet-stream",
+            fileSize: bytes.length,
+            fetchDurationSec,
+            actualFetchTimeSec: Number.isFinite(out?.actualFetchTimeSec) ? out.actualFetchTimeSec : null,
+            fetchedAt: Date.now(),
+          },
+        };
+      }
+      throw new Error(`Unsupported URL protocol: ${u.protocol}`);
+    }
+
+    async function analyzeBytes(bytes, fileMeta = {}) {
+      setStatus("Analyzing media...");
+      result = await analyzeByDetectedFormat(bytes, { fileMeta });
+      const format = result?.format?.formatName || "unknown";
+      mediaInfo = { [format]: result };
+      timeline = createPlayerTimelineSnapshot(mediaInfo);
+      player.load(mediaInfo);
+      playheadSec = timeline.startSec;
+      inSecEl.value = timeline.startSec.toFixed(3);
+      outSecEl.value = timeline.endSec.toFixed(3);
+      viewerEmptyEl.style.display = "";
+      renderSummary(player.describe());
+      updateTimecode();
+      drawTimeline();
+      setStatus(`Ready: ${format}, duration=${fmt(timeline.endSec - timeline.startSec)}.`);
+    }
+
+    function renderSummary(desc) {
+      const streams = Array.isArray(desc?.streams) ? desc.streams : [];
+      const videoStream = streams.find((s) => s.codecType === "video");
+      const audioStream = streams.find((s) => s.codecType === "audio");
+      summaryEl.innerHTML = [
+        ["format", desc.formatName || "-"],
+        ["duration", fmt(desc.duration || 0)],
+        ["video", videoStream ? `${videoStream.codecName || "-"} ${videoStream.width || "-"}x${videoStream.height || "-"}` : "-"],
+        ["audio", audioStream ? `${audioStream.codecName || "-"} ${audioStream.sampleRate || "-"}Hz` : "-"],
+      ].map(([k, v]) => `<div class="k">${escapeHtml(k)}</div><div>${escapeHtml(v)}</div>`).join("");
+      videoCountEl.textContent = String(desc.videoFrames || 0);
+      audioCountEl.textContent = String(desc.audioFrames || 0);
+      streamCountEl.textContent = String(streams.length);
+      streamsEl.innerHTML = streams.length
+        ? streams.map((s) => `
+          <div class="stream-row">
+            <span class="tag">#${escapeHtml(s.index ?? "-")}</span>
+            <span>${escapeHtml(s.codecType || "-")}</span>
+            <span>${escapeHtml(s.codecName || "-")}</span>
+          </div>
+        `).join("")
+        : `<div class="log-line">No streams.</div>`;
+    }
+
+    function escapeHtml(v) {
+      return String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    }
+
+    function timelineGeom() {
+      const rect = timelineCanvasEl.getBoundingClientRect();
+      const w = Math.max(640, Math.floor(rect.width || 1200));
+      const h = 112;
+      const dpr = window.devicePixelRatio || 1;
+      if (timelineCanvasEl.width !== Math.floor(w * dpr) || timelineCanvasEl.height !== Math.floor(h * dpr)) {
+        timelineCanvasEl.width = Math.floor(w * dpr);
+        timelineCanvasEl.height = Math.floor(h * dpr);
+      }
+      const ctx = timelineCanvasEl.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const left = 54;
+      const right = 12;
+      const minT = timeline?.startSec || 0;
+      const maxT = timeline?.endSec || 1;
+      const span = Math.max(0.001, maxT - minT);
+      return { ctx, w, h, left, right, minT, maxT, span, innerW: w - left - right };
+    }
+
+    function xForTime(t, g) {
+      return g.left + ((Number(t) - g.minT) / g.span) * g.innerW;
+    }
+
+    function timeForX(x, g) {
+      const ratio = Math.max(0, Math.min(1, (x - g.left) / g.innerW));
+      return g.minT + ratio * g.span;
+    }
+
+    function paintTrack(ctx, times, y, color, g) {
+      ctx.fillStyle = color;
+      for (const t of times || []) {
+        const x = xForTime(t, g);
+        ctx.fillRect(x, y, 2, 20);
+      }
+    }
+
+    function drawTimeline() {
+      if (drawRaf) return;
+      drawRaf = requestAnimationFrame(() => {
+        drawRaf = 0;
+        const g = timelineGeom();
+        const { ctx, w, h } = g;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = "#0c1118";
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = "#283344";
+        ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+        ctx.font = "12px ui-monospace, Menlo, monospace";
+        ctx.fillStyle = "#91a0b7";
+        ctx.fillText("V1", 16, 44);
+        ctx.fillText("A1", 16, 76);
+        ctx.strokeStyle = "#263344";
+        ctx.beginPath();
+        ctx.moveTo(g.left, 22.5);
+        ctx.lineTo(w - g.right, 22.5);
+        ctx.moveTo(g.left, 56.5);
+        ctx.lineTo(w - g.right, 56.5);
+        ctx.moveTo(g.left, 88.5);
+        ctx.lineTo(w - g.right, 88.5);
+        ctx.stroke();
+        if (!timeline) {
+          ctx.fillText("Load media to build timeline", g.left + 8, 58);
+          return;
+        }
+        paintTrack(ctx, timeline.videoTimes, 34, "rgba(100,168,255,0.86)", g);
+        paintTrack(ctx, timeline.audioTimes, 66, "rgba(88,215,152,0.72)", g);
+        const inX = xForTime(Number(inSecEl.value), g);
+        const outX = xForTime(Number(outSecEl.value), g);
+        ctx.fillStyle = "rgba(100,168,255,0.08)";
+        ctx.fillRect(Math.min(inX, outX), 24, Math.abs(outX - inX), 64);
+        ctx.strokeStyle = "#64a8ff";
+        ctx.beginPath();
+        ctx.moveTo(inX, 24);
+        ctx.lineTo(inX, 90);
+        ctx.moveTo(outX, 24);
+        ctx.lineTo(outX, 90);
+        ctx.stroke();
+        const phX = xForTime(playheadSec, g);
+        ctx.strokeStyle = "#ffae5d";
+        ctx.beginPath();
+        ctx.moveTo(phX, 12);
+        ctx.lineTo(phX, h - 10);
+        ctx.stroke();
+        ctx.fillStyle = "#ffae5d";
+        ctx.fillText(fmt(playheadSec), Math.min(w - 92, phX + 6), 18);
+      });
+    }
+
+    function clampSegmentInputs() {
+      if (!timeline) return null;
+      let start = Number(inSecEl.value);
+      let end = Number(outSecEl.value);
+      if (!Number.isFinite(start)) start = timeline.startSec;
+      if (!Number.isFinite(end)) end = timeline.endSec;
+      start = Math.max(timeline.startSec, Math.min(timeline.endSec, start));
+      end = Math.max(timeline.startSec, Math.min(timeline.endSec, end));
+      if (end < start) [start, end] = [end, start];
+      inSecEl.value = start.toFixed(3);
+      outSecEl.value = end.toFixed(3);
+      return { start, end };
+    }
+
+    async function playRange(start, end) {
+      if (!mediaInfo) throw new Error("No media loaded.");
+      await player.playSegment({ startSec: start, endSec: end, video: true, audio: true });
+    }
+
+    loadFileBtn.addEventListener("click", async () => {
+      loadFileBtn.disabled = true;
+      loadUrlBtn.disabled = true;
+      if (urlFetchDurationEl) urlFetchDurationEl.disabled = true;
+      try {
+        const file = fileEl.files?.[0];
+        if (!file) throw new Error("Choose a file first.");
+        await analyzeBytes(new Uint8Array(await file.arrayBuffer()), { fileName: file.name, fileSize: file.size });
+      } catch (err) {
+        setStatus(`Analyze failed: ${err?.message || String(err)}`);
+      } finally {
+        loadFileBtn.disabled = false;
+        loadUrlBtn.disabled = false;
+        if (urlFetchDurationEl) urlFetchDurationEl.disabled = false;
+      }
+    });
+
+    loadUrlBtn.addEventListener("click", async () => {
+      loadFileBtn.disabled = true;
+      loadUrlBtn.disabled = true;
+      if (urlFetchDurationEl) urlFetchDurationEl.disabled = true;
+      try {
+        const url = sourceUrlEl.value.trim();
+        if (!url) throw new Error("Enter a URL first.");
+        const out = await fetchBytesFromUrl(url);
+        await analyzeBytes(out.bytes, out.meta);
+      } catch (err) {
+        setStatus(`Analyze URL failed: ${err?.message || String(err)}`);
+      } finally {
+        loadFileBtn.disabled = false;
+        loadUrlBtn.disabled = false;
+        if (urlFetchDurationEl) urlFetchDurationEl.disabled = false;
+      }
+    });
+
+    playSelectionBtn.addEventListener("click", () => {
+      const range = clampSegmentInputs();
+      if (!range) return;
+      playRange(range.start, range.end).catch((err) => setStatus(`Play failed: ${err?.message || String(err)}`));
+    });
+
+    playAllBtn.addEventListener("click", () => {
+      if (!timeline) return;
+      inSecEl.value = timeline.startSec.toFixed(3);
+      outSecEl.value = timeline.endSec.toFixed(3);
+      playRange(timeline.startSec, timeline.endSec).catch((err) => setStatus(`Play failed: ${err?.message || String(err)}`));
+    });
+
+    stopBtn.addEventListener("click", () => {
+      player.stop();
+      setStatus("Stopped.");
+      drawTimeline();
+    });
+
+    [inSecEl, outSecEl].forEach((el) => {
+      el.addEventListener("change", () => {
+        clampSegmentInputs();
+        updateTimecode();
+        drawTimeline();
+      });
+    });
+
+    timelineCanvasEl.addEventListener("pointerdown", (ev) => {
+      if (!timeline) return;
+      const rect = timelineCanvasEl.getBoundingClientRect();
+      const g = timelineGeom();
+      playheadSec = timeForX(ev.clientX - rect.left, g);
+      updateTimecode();
+      drawTimeline();
+    });
+
+    window.addEventListener("resize", drawTimeline);
+    drawTimeline();
+  </script>
+</body>
+</html>

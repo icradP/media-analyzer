@@ -43,7 +43,7 @@
   H.264 wasm/worker fallback。用于 WebCodecs 无法解码时的帧预览兜底。
 
 - `examples/`
-  静态示例页。`media-overview-demo.html` 展示总览信息，`frame-analysis-demo.html` 展示逐帧列表、详情树、HexDataView、统计图和播放/解码操作。
+  静态示例页。`media-overview-demo.html` 展示总览信息，`frame-analysis-demo.html` 展示逐帧列表、详情树、HexDataView、统计图和播放/解码操作，`player-demo.html` 展示基于 `lib/player` 的独立播放器页面。
 
 ## 主流程
 
