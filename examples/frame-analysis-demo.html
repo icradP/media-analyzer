@@ -74,7 +74,7 @@
     }
     .monitor-info-card .title { margin-bottom: 6px; }
     .monitor-info-card .tree-wrap { max-height: min(34vh, 300px); }
-    .monitor-info-card .hex-wrap { max-height: min(34vh, 300px); }
+    .monitor-info-card .hex-wrap { max-height: min(48vh, 600px); }
     .video-preview-shell {
       width: 100%;
       max-height: min(52vh, 540px);
@@ -174,7 +174,7 @@
     }
     .frame-virtual-spacer {
       position: relative;
-      min-width: 960px;
+      min-width: 1240px;
     }
     .frame-table-meta {
       padding: 7px 10px;
@@ -184,10 +184,12 @@
     }
     .frame-table-row {
       display: grid;
-      grid-template-columns: 64px 70px 110px 68px 88px 88px 124px 82px 92px;
+      grid-template-columns: 64px 70px 110px 68px 72px 88px 88px 124px 82px 92px minmax(180px, 1fr);
       gap: 8px;
       align-items: center;
       height: 28px;
+      min-width: 1240px;
+      box-sizing: border-box;
       padding: 0 10px;
       border-bottom: 1px solid #1f2a3d;
       color: #dce6f4;
@@ -212,6 +214,27 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .frame-picture {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-width: 34px;
+      max-width: 68px;
+      height: 18px;
+      padding: 0 6px;
+      border-radius: 4px;
+      border: 1px solid #334763;
+      color: #dce6f4;
+      background: #182435;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 18px;
+    }
+    .frame-picture.i { color: #96f7c2; border-color: #267b4e; background: rgba(39, 174, 96, 0.18); }
+    .frame-picture.p { color: #9dc7ff; border-color: #326aa5; background: rgba(77, 163, 255, 0.16); }
+    .frame-picture.b { color: #ffc48a; border-color: #9a6130; background: rgba(255, 159, 67, 0.16); }
+    .frame-picture.config { color: #e8d0ff; border-color: #6d55aa; background: rgba(129, 93, 255, 0.16); }
     .right-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -375,7 +398,7 @@
         <h2 class="title">帧列表明细</h2>
         <div id="framesScroll" class="frames-scroll">
           <div class="frame-table-row header">
-            <span>Addr#</span><span>Idx</span><span>Offset</span><span>Type</span><span>PTS</span><span>PTS(s)</span><span>PTS(HMS)</span><span>Size</span><span>Codec</span>
+            <span>Addr#</span><span>Idx</span><span>Offset</span><span>Type</span><span>Pic</span><span>PTS</span><span>PTS(s)</span><span>PTS(HMS)</span><span>Size</span><span>Codec</span><span>Refs</span>
           </div>
           <div id="framesSpacer" class="frame-virtual-spacer">
             <div id="framesBody" class="frame-list frame-timeline-body"></div>
@@ -506,6 +529,7 @@
     let timelineVideoTimesSorted = [];
     let timelineAudioTimesSorted = [];
     let frameListScrollRaf = 0;
+    let frameListInfoCache = new Map();
 
     const FRAME_ROW_H = 28;
     const FRAME_HEADER_H = 30;
@@ -569,6 +593,66 @@
       while (p < vids.length && !vids[p]._isKeyFrame) p += 1;
       end = p < vids.length ? p - 1 : vids.length - 1;
       return { startFrame: vids[start], endFrame: vids[end], targetFrame };
+    }
+    function isVideoConfigFrameForList(frame) {
+      if (!frame || frame._mediaType !== "video") return false;
+      const raw = frame._rawFrame || {};
+      const fs = raw.formatSpecific || frame.data || {};
+      const remark = String(raw.remark || frame._remark || fs.remark || "");
+      return !!(
+        Number(fs?._avcPacketType_value) === 0 ||
+        Number(fs?._hevcPacketType_value) === 0 ||
+        (Number(fs?._isExHeader_value) === 1 && Number(fs?._packetType_value) === 0) ||
+        /sequence\s+header|sequence\s+start|decoder\s*config|specific\s+config/i.test(remark)
+      );
+    }
+    function normalizePictureTypeForList(frame) {
+      if (!frame || frame._mediaType !== "video") return { label: "-", className: "", title: "non-video" };
+      if (isVideoConfigFrameForList(frame)) return { label: "Config", className: "config", title: "video decoder configuration frame" };
+      const rawType = String(frame._pictureType || frame._rawFrame?.pictureType || "").toUpperCase();
+      if (rawType.includes("IDR") || rawType === "I") return { label: "I", className: "i", title: "intra picture" };
+      if (rawType === "P") return { label: "P", className: "p", title: "predictive picture" };
+      if (rawType === "B") return { label: "B", className: "b", title: "bi-predictive picture" };
+      if (frame._isKeyFrame) return { label: "I", className: "i", title: "keyframe inferred as intra picture" };
+      return { label: "-", className: "", title: "picture type unavailable" };
+    }
+    function formatFrameReferenceSummary(frame) {
+      if (!frame || frame._mediaType !== "video") return { text: "-", title: "non-video" };
+      if (isVideoConfigFrameForList(frame)) return { text: "config", title: "configuration frame has no picture references" };
+      if (normalizePictureTypeForList(frame).label === "I") return { text: "-", title: "intra picture has no inter-frame references" };
+      const relationSource = allFrames.length ? allFrames : shownFrames;
+      const relationFrame = relationSource.find((f) =>
+        f?._mediaType === frame._mediaType && Number(f?.index) === Number(frame.index)
+      ) || frame;
+      const rel = buildFrameReferenceRelations(relationFrame, relationSource, resultMap || {});
+      if (!rel.relations.length) {
+        return {
+          text: rel.status === "unavailable" ? "unresolved" : "-",
+          title: `reference status: ${rel.status}`,
+        };
+      }
+      const parts = rel.relations.map((r) => {
+        const idx = r?.frame?.index ?? "-";
+        return `${r.label || "ref"}:${idx}`;
+      });
+      const detail = rel.relations.map((r) => {
+        const idx = r?.frame?.index ?? "-";
+        const dir = r?.direction || "unknown";
+        return `${r.label || "ref"} ${dir} frame ${idx}`;
+      });
+      return {
+        text: parts.join(" "),
+        title: `${rel.status}: ${detail.join(", ")}`,
+      };
+    }
+    function frameListInfoForFrame(frame) {
+      const cacheKey = `${frame?._mediaType || "-"}:${frame?.index ?? "-"}`;
+      if (frameListInfoCache.has(cacheKey)) return frameListInfoCache.get(cacheKey);
+      const picture = normalizePictureTypeForList(frame);
+      const refs = formatFrameReferenceSummary(frame);
+      const info = { picture, refs };
+      frameListInfoCache.set(cacheKey, info);
+      return info;
     }
     function isFrameInTinyDecoderRange(frame) {
       if (!frame || !tinyDecoderGopRange) return false;
@@ -871,7 +955,7 @@
           highlightLength = hit.length;
         }
       }
-      const bpl = computeHexBytesPerLine(hexWrapEl.clientWidth || 900);
+      const bpl = Math.max(8, computeHexBytesPerLine(hexWrapEl.clientWidth || 900));
       const rows = buildHexViewRows(bytes, {
         bytesPerLine: bpl,
         showAscii: true,
@@ -1689,6 +1773,7 @@
       framesBodyEl.style.transform = `translateY(${start * FRAME_ROW_H}px)`;
       const rows = shownFrames.slice(start, end).map((f, offset) => {
         const i = start + offset;
+        const info = frameListInfoForFrame(f);
         const klass = [
           "frame-table-row",
           i === selectedIndex ? "selected" : "",
@@ -1701,11 +1786,13 @@
             <span>${esc(f.index ?? "-")}</span>
             <span class="mono-clip">${esc(fmtOffset(f))}</span>
             <span>${esc(f._mediaType ?? "-")}</span>
+            <span><span class="frame-picture ${esc(info.picture.className)}" title="${esc(info.picture.title)}">${esc(info.picture.label)}</span></span>
             <span>${esc(fmtTick(f._rawFrame?.pts ?? f._rawFrame?.timestamp ?? f._pts))}</span>
             <span>${esc(fmtTimeSec(f._rawFrame?.ptsTime))}</span>
             <span>${esc(formatHms(f._rawFrame?.ptsTime))}</span>
             <span>${esc(f._size ?? "-")}</span>
             <span class="mono-clip">${esc(f._codecFormat ?? "-")}</span>
+            <span class="mono-clip" title="${esc(info.refs.title)}">${esc(info.refs.text)}</span>
           </div>
         `;
       }).join("");
@@ -1717,6 +1804,7 @@
       const base = filter === "all" ? allFrames : getFilteredFrames(resultMap, filter, result?.format?.formatName);
       shownFrames = sortFramesByMode(base, orderModeEl.value);
       selectedIndex = shownFrames.length > 0 ? 0 : -1;
+      frameListInfoCache = new Map();
       if (framesScrollEl) framesScrollEl.scrollTop = 0;
       renderFrames();
       const sf = selectedFrame();
@@ -1978,6 +2066,7 @@
       const format = result?.format?.formatName || "unknown";
       resultMap = { [format]: result };
       allFrames = getFrames(resultMap, format);
+      frameListInfoCache = new Map();
       markTimelineTrackTimesDirty();
       shownFrames = sortFramesByMode(allFrames, orderModeEl.value);
       selectedIndex = shownFrames.length > 0 ? 0 : -1;
@@ -2258,6 +2347,7 @@
       saveCaptureBtn.disabled = true;
       allFrames = [];
       shownFrames = [];
+      frameListInfoCache = new Map();
       markTimelineTrackTimesDirty();
       selectedIndex = -1;
       framesBodyEl.innerHTML = "";
