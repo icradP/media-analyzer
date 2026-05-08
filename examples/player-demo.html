@@ -271,6 +271,7 @@
       </span>
       <button id="loadFile" class="primary">Analyze File</button>
       <button id="loadUrl">Analyze URL</button>
+      <button id="liveUrl">Live MSE</button>
     </header>
 
     <section class="workspace">
@@ -338,6 +339,7 @@
       collectWebSocketBinary,
       WS_STREAM_DEFAULT_FETCH_SECONDS,
     } from "../lib/streaming/wsStreamCapture.js";
+    import { WsFlvMseLivePlayer } from "../lib/streaming/wsFlvMseLivePlayer.js";
     import { AnalyzedMediaPlayer, createPlayerTimelineSnapshot, MseSourceController } from "../lib/player/index.js";
 
     const fileEl = document.getElementById("file");
@@ -345,6 +347,7 @@
     const urlFetchDurationEl = document.getElementById("urlFetchDuration");
     const loadFileBtn = document.getElementById("loadFile");
     const loadUrlBtn = document.getElementById("loadUrl");
+    const liveUrlBtn = document.getElementById("liveUrl");
     const canvasEl = document.getElementById("videoCanvas");
     const mseVideoEl = document.getElementById("mseVideo");
     const timelineCanvasEl = document.getElementById("timelineCanvas");
@@ -370,6 +373,9 @@
     let timeline = null;
     let currentBytes = null;
     let activeMseToken = 0;
+    let livePlayer = null;
+    let liveCleanupDebugEvents = null;
+    let liveStopFrameDebug = null;
     let playheadSec = 0;
     let drawRaf = 0;
 
@@ -518,6 +524,22 @@
       mseController.stopPlayback({ release });
     }
 
+    function stopLivePlayback() {
+      activeMseToken += 1;
+      if (liveStopFrameDebug) {
+        liveStopFrameDebug();
+        liveStopFrameDebug = null;
+      }
+      if (liveCleanupDebugEvents) {
+        liveCleanupDebugEvents();
+        liveCleanupDebugEvents = null;
+      }
+      if (livePlayer) {
+        livePlayer.stop();
+        livePlayer = null;
+      }
+    }
+
     async function createMseSource(bytes) {
       return mseController.createSource({ bytes, result, mediaInfo });
     }
@@ -593,6 +615,7 @@
 
     async function analyzeBytes(bytes, fileMeta = {}) {
       setStatus("Analyzing media...");
+      stopLivePlayback();
       player.stop();
       stopMsePlayback({ release: true });
       showCanvasPreview();
@@ -747,6 +770,7 @@
         throw new Error("No source bytes available for MSE playback.");
       }
       player.stop();
+      stopLivePlayback();
       stopMsePlayback({ release: true });
       const token = activeMseToken;
       showMsePreview();
@@ -839,6 +863,7 @@
         await playRangeMse(start, end);
         return;
       }
+      stopLivePlayback();
       stopMsePlayback({ release: true });
       showCanvasPreview();
       await player.playSegment({ startSec: start, endSec: end, video: true, audio: true });
@@ -847,6 +872,7 @@
     loadFileBtn.addEventListener("click", async () => {
       loadFileBtn.disabled = true;
       loadUrlBtn.disabled = true;
+      liveUrlBtn.disabled = true;
       if (urlFetchDurationEl) urlFetchDurationEl.disabled = true;
       try {
         const file = fileEl.files?.[0];
@@ -857,6 +883,7 @@
       } finally {
         loadFileBtn.disabled = false;
         loadUrlBtn.disabled = false;
+        liveUrlBtn.disabled = false;
         if (urlFetchDurationEl) urlFetchDurationEl.disabled = false;
       }
     });
@@ -864,6 +891,7 @@
     loadUrlBtn.addEventListener("click", async () => {
       loadFileBtn.disabled = true;
       loadUrlBtn.disabled = true;
+      liveUrlBtn.disabled = true;
       if (urlFetchDurationEl) urlFetchDurationEl.disabled = true;
       try {
         const url = sourceUrlEl.value.trim();
@@ -875,7 +903,49 @@
       } finally {
         loadFileBtn.disabled = false;
         loadUrlBtn.disabled = false;
+        liveUrlBtn.disabled = false;
         if (urlFetchDurationEl) urlFetchDurationEl.disabled = false;
+      }
+    });
+
+    liveUrlBtn.addEventListener("click", async () => {
+      loadFileBtn.disabled = true;
+      loadUrlBtn.disabled = true;
+      liveUrlBtn.disabled = true;
+      try {
+        const url = sourceUrlEl.value.trim();
+        if (!url) throw new Error("Enter a WS-FLV URL first.");
+        const u = new URL(url);
+        if (u.protocol !== "ws:" && u.protocol !== "wss:") throw new Error("Live MSE currently expects ws:// or wss:// FLV.");
+        player.stop();
+        stopMsePlayback({ release: true });
+        stopLivePlayback();
+        showMsePreview();
+        stateLabelEl.textContent = "live";
+        playheadSec = 0;
+        updateTimecode();
+        drawTimeline();
+        const token = activeMseToken;
+        liveCleanupDebugEvents = attachMsePlaybackDebugEvents();
+        liveStopFrameDebug = startMseVideoFrameDebug(token);
+        livePlayer = new WsFlvMseLivePlayer({
+          videoEl: mseVideoEl,
+          onLog: pushLog,
+          onStatus: setStatus,
+          formatTime: fmt,
+          targetLatencySec: 3,
+          audioOnlyTargetLatencySec: 0.45,
+          audioOnlySegmentDurationMs: 220,
+          keepBehindSec: 30,
+        });
+        await livePlayer.start(url);
+      } catch (err) {
+        setStatus(`Live MSE failed: ${err?.message || String(err)}`);
+        stopLivePlayback();
+      } finally {
+        loadFileBtn.disabled = false;
+        loadUrlBtn.disabled = false;
+        liveUrlBtn.disabled = false;
       }
     });
 
@@ -894,6 +964,7 @@
 
     stopBtn.addEventListener("click", () => {
       player.stop();
+      stopLivePlayback();
       stopMsePlayback({ release: false });
       setStatus("Stopped.");
       drawTimeline();
