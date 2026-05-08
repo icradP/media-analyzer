@@ -409,7 +409,7 @@
       line.className = "log-line";
       line.textContent = `${new Date().toLocaleTimeString()} ${text}`;
       logEl.prepend(line);
-      while (logEl.children.length > 80) logEl.lastElementChild?.remove();
+      while (logEl.children.length > 180) logEl.lastElementChild?.remove();
     }
 
     function fmt(sec) {
@@ -438,6 +438,62 @@
         }
       }
       return out.length ? out.join(", ") : "empty";
+    }
+
+    function mseVideoStateText() {
+      return [
+        `t=${fmt(mseVideoEl.currentTime)}`,
+        `duration=${fmt(mseVideoEl.duration)}`,
+        `buffered=${fmtRanges(mseVideoEl.buffered)}`,
+        `paused=${mseVideoEl.paused}`,
+        `ended=${mseVideoEl.ended}`,
+        `readyState=${mseVideoEl.readyState}`,
+        `networkState=${mseVideoEl.networkState}`,
+        `rate=${mseVideoEl.playbackRate}`,
+      ].join(", ");
+    }
+
+    function attachMsePlaybackDebugEvents() {
+      const events = ["playing", "waiting", "stalled", "suspend", "pause", "ended", "seeking", "seeked", "ratechange", "error"];
+      const onEvent = (event) => {
+        const err = mseVideoEl.error ? `, error=${mseVideoEl.error.code}:${mseVideoEl.error.message || ""}` : "";
+        pushLog(`[mse event] ${event.type}: ${mseVideoStateText()}${err}`);
+      };
+      for (const event of events) mseVideoEl.addEventListener(event, onEvent);
+      return () => {
+        for (const event of events) mseVideoEl.removeEventListener(event, onEvent);
+      };
+    }
+
+    function startMseVideoFrameDebug(token) {
+      if (typeof mseVideoEl.requestVideoFrameCallback !== "function") return () => {};
+      let active = true;
+      let firstWall = 0;
+      let lastWall = 0;
+      let firstMedia = null;
+      let lastMeta = null;
+      const onFrame = (now, metadata) => {
+        if (!active || token !== activeMseToken) return;
+        if (!firstWall) firstWall = now;
+        if (firstMedia === null) firstMedia = Number(metadata?.mediaTime) || 0;
+        lastMeta = metadata || null;
+        const elapsedWall = (now - firstWall) / 1000;
+        const mediaTime = Number(metadata?.mediaTime) || 0;
+        if (!lastWall || now - lastWall >= 1000) {
+          lastWall = now;
+          pushLog(`[mse vf] presented=${metadata?.presentedFrames ?? "-"}, media=${fmt(mediaTime)}, wall=${elapsedWall.toFixed(3)}s, mediaDelta=${(mediaTime - firstMedia).toFixed(3)}s`);
+        }
+        mseVideoEl.requestVideoFrameCallback(onFrame);
+      };
+      mseVideoEl.requestVideoFrameCallback(onFrame);
+      return () => {
+        active = false;
+        if (lastMeta) {
+          const mediaTime = Number(lastMeta.mediaTime) || 0;
+          const elapsedWall = firstWall ? (performance.now() - firstWall) / 1000 : 0;
+          pushLog(`[mse vf] final presented=${lastMeta.presentedFrames ?? "-"}, media=${fmt(mediaTime)}, wall=${elapsedWall.toFixed(3)}s`);
+        }
+      };
     }
 
     function updateTimecode() {
@@ -717,6 +773,9 @@
       await seekMseTo(seekStart);
       if (token !== activeMseToken) return { stopped: true };
       pushLog(`[mse play] seekTarget=${fmt(seekStart)}, actual=${fmt(mseVideoEl.currentTime)}, ${mseController.describeVideoState()}`);
+      mseVideoEl.defaultPlaybackRate = 1;
+      mseVideoEl.playbackRate = 1;
+      pushLog(`[mse play] normalized playbackRate=1, state=${mseVideoStateText()}`);
       const onTimeUpdate = () => {
         if (token !== activeMseToken) return;
         playheadSec = mediaStartOffset + mseVideoEl.currentTime;
@@ -724,26 +783,52 @@
         drawTimeline();
       };
       mseVideoEl.addEventListener("timeupdate", onTimeUpdate);
+      const cleanupDebugEvents = attachMsePlaybackDebugEvents();
+      const stopFrameDebug = startMseVideoFrameDebug(token);
       try {
         onTimeUpdate();
+        const playStartWall = performance.now();
+        let exitReason = "target";
         await mseVideoEl.play();
-        while (token === activeMseToken && !mseVideoEl.paused && mseVideoEl.currentTime < stopAt) {
+        while (token === activeMseToken) {
+          if (mseVideoEl.currentTime >= stopAt) {
+            exitReason = "target";
+            break;
+          }
+          if (mseVideoEl.ended) {
+            exitReason = "ended";
+            break;
+          }
+          if (mseVideoEl.paused) {
+            exitReason = "paused";
+            break;
+          }
           await new Promise((resolve) => setTimeout(resolve, 60));
         }
         if (token !== activeMseToken) return { stopped: true };
+        const elapsedWallSec = (performance.now() - playStartWall) / 1000;
         mseVideoEl.pause();
         const finalMediaTime = Math.min(stopAt, mseVideoEl.currentTime);
         playheadSec = mediaStartOffset + finalMediaTime;
         updateTimecode();
         drawTimeline();
         stateLabelEl.textContent = "idle";
-        if (mseVideoEl.ended && mseVideoEl.currentTime + 0.25 < stopAt) {
+        const requestedMediaSec = Math.max(0, stopAt - seekStart);
+        const expectedWallSec = requestedMediaSec / Math.max(0.001, Math.abs(mseVideoEl.playbackRate) || 1);
+        pushLog(`[mse play] exit=${exitReason}, wall=${elapsedWallSec.toFixed(3)}s, expectedWall=${expectedWallSec.toFixed(3)}s, final=${mseVideoStateText()}`);
+        if (exitReason === "target" && elapsedWallSec + 0.5 < expectedWallSec) {
+          setStatus(`MSE media clock reached target early: wall=${elapsedWallSec.toFixed(3)}s, media=${fmt(finalMediaTime)} / ${fmt(stopAt)}.`);
+        } else if (exitReason === "ended" && mseVideoEl.currentTime + 0.25 < stopAt) {
           setStatus(`MSE ended early at ${fmt(mediaStartOffset + mseVideoEl.currentTime)}; expected ${fmt(mediaStartOffset + stopAt)}.`);
+        } else if (exitReason === "paused" && mseVideoEl.currentTime + 0.25 < stopAt) {
+          setStatus(`MSE paused early at ${fmt(mediaStartOffset + mseVideoEl.currentTime)}; expected ${fmt(mediaStartOffset + stopAt)}.`);
         } else {
           setStatus("MSE play done.");
         }
         return { stopped: false };
       } finally {
+        stopFrameDebug();
+        cleanupDebugEvents();
         mseVideoEl.removeEventListener("timeupdate", onTimeUpdate);
       }
     }
