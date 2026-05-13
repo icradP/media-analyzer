@@ -371,6 +371,23 @@
     .sei-tools { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
     .sei-tools-mini { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
     .sei-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; min-height: 18px; }
+    .sei-fields {
+      display: grid;
+      grid-template-columns: minmax(112px, 0.9fr) minmax(0, 1.4fr);
+      gap: 4px 8px;
+      margin: 6px 0;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f1622;
+      font-size: 12px;
+    }
+    .sei-field-k { color: var(--muted); }
+    .sei-field-v {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
     .sei-text {
       width: 100%;
       min-height: 128px;
@@ -440,15 +457,20 @@
             <h2 class="title">SEI Editor (H264)</h2>
             <div class="sei-tools">
               <button id="extractSei">Extract SEI From Selected</button>
-              <button id="applySei">Apply SEI Edit</button>
+              <button id="applySei">Apply / Insert SEI</button>
             </div>
             <div id="seiMeta" class="sei-meta">No SEI extracted.</div>
-            <textarea id="seiText" class="sei-text" placeholder="SEI NAL hex bytes (e.g. 06 05 ...)."></textarea>
+            <div id="seiFields" class="sei-fields"><div class="sei-field-k">state</div><div class="sei-field-v">-</div></div>
+            <div class="sei-tools-mini">
+              <label for="seiPayloadType">SEI Type</label>
+              <select id="seiPayloadType"></select>
+            </div>
+            <textarea id="seiText" class="sei-text" placeholder="Editable payload hex bytes only. NAL header, payloadType, payloadSize, UUID/prefix fields and trailing bits are generated automatically."></textarea>
             <div class="sei-tools-mini">
               <button id="seiHexToAscii">Hex -> ASCII</button>
               <button id="seiAsciiToHex">ASCII -> Hex</button>
             </div>
-            <textarea id="seiAsciiText" class="sei-text" placeholder="ASCII view/editor (currently ASCII only)."></textarea>
+            <textarea id="seiAsciiText" class="sei-text" placeholder="Payload ASCII view/editor (currently ASCII only)."></textarea>
           </section>
           <div class="monitor-side">
             <section class="monitor-info-card">
@@ -571,7 +593,10 @@
       hexToBytes,
       bytesToAscii,
       asciiToBytes,
+      H264_SEI_PAYLOAD_TYPE_NAMES,
       extractH264SeiFromFrame,
+      buildH264SeiNaluFromPayload,
+      insertH264SeiIntoFrame,
       applyH264SeiPatch,
     } from "../lib/browser/index.js";
     import { VideoSegmentPlayer } from "../lib/player/index.js";
@@ -612,6 +637,8 @@
     const seiHexToAsciiBtn = document.getElementById("seiHexToAscii");
     const seiAsciiToHexBtn = document.getElementById("seiAsciiToHex");
     const seiMetaEl = document.getElementById("seiMeta");
+    const seiFieldsEl = document.getElementById("seiFields");
+    const seiPayloadTypeEl = document.getElementById("seiPayloadType");
     const seiTextEl = document.getElementById("seiText");
     const seiAsciiTextEl = document.getElementById("seiAsciiText");
     const copyFailureBtn = document.getElementById("copyFailure");
@@ -1134,8 +1161,61 @@
     function clearSeiEditor(note = "No SEI extracted.") {
       seiEditContext = null;
       if (seiMetaEl) seiMetaEl.textContent = note;
+      renderSeiFields([]);
+      if (seiPayloadTypeEl) seiPayloadTypeEl.value = "5";
       if (seiTextEl) seiTextEl.value = "";
       if (seiAsciiTextEl) seiAsciiTextEl.value = "";
+    }
+    function renderSeiFields(fields) {
+      if (!seiFieldsEl) return;
+      const rows = Array.isArray(fields) ? fields : [];
+      if (!rows.length) {
+        seiFieldsEl.innerHTML = `<div class="sei-field-k">state</div><div class="sei-field-v">-</div>`;
+        return;
+      }
+      seiFieldsEl.innerHTML = rows
+        .map((row) => `<div class="sei-field-k">${esc(row.name)}</div><div class="sei-field-v">${esc(row.value)}</div>`)
+        .join("");
+    }
+    function buildSeiFieldRows(out, payloadBytes, editablePayloadBytes) {
+      const ctx = out.context || {};
+      const payloadType = Number.isInteger(ctx.payloadType) ? ctx.payloadType : Number(ctx.payloadTypes?.[0]);
+      const typeName = H264_SEI_PAYLOAD_TYPE_NAMES?.[payloadType] || "custom";
+      const rows = [
+        { name: "frame", value: String(ctx.frameIndex ?? "-") },
+        { name: "transport", value: String(ctx.transport || "-") },
+        { name: "nalu_header", value: "0x06 / forbidden_zero_bit=0 / nal_unit_type=6 (SEI)" },
+        { name: "nalu_offset", value: Number.isFinite(ctx.absOffset) ? `0x${ctx.absOffset.toString(16).toUpperCase()}` : "-" },
+        { name: "nalu_bytes", value: String(out.seiBytes?.length ?? "-") },
+        { name: "payloadType", value: `${Number.isFinite(payloadType) ? payloadType : "-"} (${typeName})` },
+        { name: "payloadSize", value: `${payloadBytes.length} bytes` },
+      ];
+      const detailFields = Array.isArray(out.seiPayload?.fields) ? out.seiPayload.fields : [];
+      for (const f of detailFields) {
+        rows.push({ name: f.name, value: f.bytes && f.bytes !== "-" ? `${f.value} | ${f.bytes}` : f.value });
+      }
+      rows.push({ name: out.seiPayload?.editableLabel || "editable_payload", value: `${editablePayloadBytes.length} bytes` });
+      rows.push({ name: "auto", value: "payloadSize, rbsp_trailing_bits, emulation_prevention, NALU length" });
+      if (ctx.messageCount > 1) rows.push({ name: "messages", value: `${ctx.messageCount} (editing first)` });
+      return rows;
+    }
+    function initSeiPayloadTypeOptions() {
+      if (!seiPayloadTypeEl) return;
+      const preferred = [5, 4, 6, 1, 0];
+      const known = Object.keys(H264_SEI_PAYLOAD_TYPE_NAMES || {})
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v));
+      const values = Array.from(new Set([...preferred, ...known, ...Array.from({ length: 256 }, (_, i) => i)])).sort((a, b) => a - b);
+      seiPayloadTypeEl.innerHTML = values.map((v) => {
+        const name = H264_SEI_PAYLOAD_TYPE_NAMES?.[v] || "custom";
+        return `<option value="${v}">${v} - ${esc(name)}</option>`;
+      }).join("");
+      seiPayloadTypeEl.value = "5";
+    }
+    function getSelectedSeiPayloadType() {
+      const raw = Number(seiPayloadTypeEl?.value);
+      if (!Number.isInteger(raw) || raw < 0) throw new Error("Invalid SEI payload type.");
+      return raw;
     }
     function extractSeiFromSelectedFrame(frame = selectedFrame(), opts = {}) {
       const { silent = false } = opts;
@@ -1149,10 +1229,24 @@
         const stream = getVideoStreamByIndex(sf?._rawFrame?.streamIndex);
         const out = extractH264SeiFromFrame(sf, result, stream);
         seiEditContext = out.context;
-        seiTextEl.value = bytesToHex(out.seiBytes);
-        if (seiAsciiTextEl) seiAsciiTextEl.value = bytesToAscii(out.seiBytes);
-        const { transport, absOffset, payloadTypes } = out.context;
-        seiMetaEl.textContent = `frame=${sf.index}, transport=${transport}, offset=0x${absOffset.toString(16).toUpperCase()}, naluBytes=${out.seiBytes.length}, payloadTypes=${payloadTypes.join(",") || "-"}`;
+        const payloadBytes = out.seiPayload?.payloadBytes instanceof Uint8Array ? out.seiPayload.payloadBytes : new Uint8Array();
+        const editablePayloadBytes = out.seiPayload?.editablePayloadBytes instanceof Uint8Array ? out.seiPayload.editablePayloadBytes : payloadBytes;
+        const payloadType = Number.isInteger(out.context?.payloadType) ? out.context.payloadType : Number(out.context?.payloadTypes?.[0]);
+        if (Number.isInteger(payloadType) && seiPayloadTypeEl) {
+          const opt = Array.from(seiPayloadTypeEl.options).find((item) => Number(item.value) === payloadType);
+          if (!opt) {
+            const option = document.createElement("option");
+            option.value = String(payloadType);
+            option.textContent = `${payloadType} - custom`;
+            seiPayloadTypeEl.appendChild(option);
+          }
+          seiPayloadTypeEl.value = String(payloadType);
+        }
+        seiTextEl.value = bytesToHex(editablePayloadBytes);
+        if (seiAsciiTextEl) seiAsciiTextEl.value = bytesToAscii(editablePayloadBytes);
+        const { transport, absOffset, payloadTypes, messageCount } = out.context;
+        renderSeiFields(buildSeiFieldRows(out, payloadBytes, editablePayloadBytes));
+        seiMetaEl.textContent = `frame=${sf.index}, transport=${transport}, offset=0x${absOffset.toString(16).toUpperCase()}, naluBytes=${out.seiBytes.length}, payloadBytes=${payloadBytes.length}, editable=${editablePayloadBytes.length}, payloadTypes=${payloadTypes.join(",") || "-"}${messageCount > 1 ? `, messages=${messageCount} (editing first)` : ""}`;
         return true;
       } catch (err) {
         clearSeiEditor(err?.message || "SEI extract failed.");
@@ -1165,15 +1259,25 @@
     }
     async function applySeiEditsToSelected() {
       if (!(currentFileBytes instanceof Uint8Array) || currentFileBytes.length <= 0) throw new Error("No source bytes loaded.");
-      if (!seiEditContext) throw new Error("Extract SEI first.");
       const sf = selectedFrame();
-      if (!sf || Number(sf.index) !== Number(seiEditContext.frameIndex)) throw new Error("Selected frame changed; extract SEI again.");
-      const edited = hexToBytes(seiTextEl.value);
-      const { patchedBytes: patched, delta } = applyH264SeiPatch(currentFileBytes, seiEditContext, edited);
-      const keepFrameIndex = Number(seiEditContext.frameIndex);
+      if (!sf || sf._mediaType !== "video") throw new Error("Select a video frame first.");
+      const payloadType = getSelectedSeiPayloadType();
+      const payloadBytes = hexToBytes(seiTextEl.value);
+      const canReplace = seiEditContext && Number(sf.index) === Number(seiEditContext.frameIndex);
+      const protectedPrefixBytes = canReplace && payloadType === Number(seiEditContext.payloadType) && seiEditContext.protectedPrefixBytes instanceof Uint8Array
+        ? seiEditContext.protectedPrefixBytes
+        : null;
+      const edited = buildH264SeiNaluFromPayload(payloadType, payloadBytes, { protectedPrefixBytes });
+      const stream = getVideoStreamByIndex(sf?._rawFrame?.streamIndex);
+      const patch = canReplace
+        ? applyH264SeiPatch(currentFileBytes, seiEditContext, edited)
+        : insertH264SeiIntoFrame(currentFileBytes, sf, result, edited, stream);
+      const { patchedBytes: patched, delta } = patch;
+      const keepFrameIndex = Number(sf.index);
+      const operation = canReplace ? "updated" : "inserted";
       await applyAnalyzeResult(patched, currentSourceMeta || {});
       syncPlaybackCursorByGlobalFrameIndex(keepFrameIndex, { scroll: true });
-      setStatus(`SEI updated in-memory @ frame ${keepFrameIndex} (delta=${delta >= 0 ? "+" : ""}${delta} bytes). Click Save File to export patched media.`);
+      setStatus(`SEI payload ${operation} @ frame ${keepFrameIndex} (type=${payloadType}, payload=${payloadBytes.length} bytes, delta=${delta >= 0 ? "+" : ""}${delta}). Click Save File to export patched media.`);
       extractSeiFromSelectedFrame();
     }
     function getFrameTimeSec(f) {
@@ -2768,18 +2872,18 @@
       try {
         const bytes = hexToBytes(seiTextEl?.value || "");
         if (seiAsciiTextEl) seiAsciiTextEl.value = bytesToAscii(bytes);
-        setStatus(`SEI Hex -> ASCII done (${bytes.length} bytes).`);
+        setStatus(`SEI payload Hex -> ASCII done (${bytes.length} bytes).`);
       } catch (err) {
-        setStatus(`SEI Hex->ASCII failed: ${err?.message || String(err)}`);
+        setStatus(`SEI payload Hex->ASCII failed: ${err?.message || String(err)}`);
       }
     });
     seiAsciiToHexBtn?.addEventListener("click", () => {
       try {
         const bytes = asciiToBytes(seiAsciiTextEl?.value || "");
         if (seiTextEl) seiTextEl.value = bytesToHex(bytes);
-        setStatus(`SEI ASCII -> Hex done (${bytes.length} bytes).`);
+        setStatus(`SEI payload ASCII -> Hex done (${bytes.length} bytes).`);
       } catch (err) {
-        setStatus(`SEI ASCII->Hex failed: ${err?.message || String(err)}`);
+        setStatus(`SEI payload ASCII->Hex failed: ${err?.message || String(err)}`);
       }
     });
 
@@ -2826,6 +2930,7 @@
       scheduleDrawNleTimeline();
       setStatus("Cleared.");
     });
+    initSeiPayloadTypeOptions();
     bindTimelineInteractions();
     bindFrameVirtualList();
     scheduleDrawNleTimeline();
