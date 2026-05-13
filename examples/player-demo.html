@@ -264,10 +264,10 @@
         <span>analysis driven playback pipeline</span>
       </div>
       <input id="file" type="file" />
-      <input id="sourceUrl" type="url" placeholder="http(s):// media file or ws(s):// stream" />
+      <input id="sourceUrl" type="url" placeholder="http(s):// media, ws(s):// FLV, or rtmp(s):// stream" />
       <span class="url-capture-field">
         <label for="urlFetchDuration">拉流(s)</label>
-        <input id="urlFetchDuration" type="number" min="1" max="600" step="1" value="10" title="仅 ws/wss 拉流采集使用；http(s) 会直接读取完整响应" />
+        <input id="urlFetchDuration" type="number" min="1" max="600" step="1" value="10" title="仅 ws/wss/rtmp 拉流采集使用；http(s) 会直接读取完整响应" />
       </span>
       <button id="loadFile" class="primary">Analyze File</button>
       <button id="loadUrl">Analyze URL</button>
@@ -339,6 +339,7 @@
       collectWebSocketBinary,
       WS_STREAM_DEFAULT_FETCH_SECONDS,
     } from "../lib/streaming/wsStreamCapture.js";
+    import { openRtmpThroughSidecar } from "../lib/streaming/rtmpSidecarBridge.js";
     import { WsFlvMseLivePlayer } from "../lib/streaming/wsFlvMseLivePlayer.js";
     import { AnalyzedMediaPlayer, createPlayerTimelineSnapshot, MseSourceController } from "../lib/player/index.js";
 
@@ -601,6 +602,38 @@
           bytes,
           meta: {
             sourceUrl: urlText,
+            fileName: inferNameFromUrl(urlText),
+            fileType: "application/octet-stream",
+            fileSize: bytes.length,
+            fetchDurationSec,
+            actualFetchTimeSec: Number.isFinite(out?.actualFetchTimeSec) ? out.actualFetchTimeSec : null,
+            fetchedAt: Date.now(),
+          },
+        };
+      }
+      if (u.protocol === "rtmp:" || u.protocol === "rtmps:") {
+        const fetchDurationSec = getUrlFetchDurationSec();
+        setStatus(`Opening RTMP sidecar ${urlText} ...`);
+        const sidecar = await openRtmpThroughSidecar(urlText, {
+          onLog: pushLog,
+          onStatus: setStatus,
+        });
+        setStatus(`Capturing ${sidecar.wsUrl} ...`);
+        const out = await collectWebSocketBinary(sidecar.wsUrl, {
+          fetchDurationSec,
+          onProgress: (msg) => {
+            if (msg) setStatus(msg);
+          },
+        });
+        const bytes = out?.bytes instanceof Uint8Array ? out.bytes : null;
+        if (!(bytes instanceof Uint8Array) || bytes.length <= 0) {
+          throw new Error("No bytes received from RTMP sidecar stream.");
+        }
+        return {
+          bytes,
+          meta: {
+            sourceUrl: urlText,
+            sidecarWsUrl: sidecar.wsUrl,
             fileName: inferNameFromUrl(urlText),
             fileType: "application/octet-stream",
             fileSize: bytes.length,
@@ -908,37 +941,53 @@
       }
     });
 
+    async function startLiveWsFlvPlayback(url) {
+      player.stop();
+      stopMsePlayback({ release: true });
+      stopLivePlayback();
+      showMsePreview();
+      stateLabelEl.textContent = "live";
+      playheadSec = 0;
+      updateTimecode();
+      drawTimeline();
+      const token = activeMseToken;
+      liveCleanupDebugEvents = attachMsePlaybackDebugEvents();
+      liveStopFrameDebug = startMseVideoFrameDebug(token);
+      livePlayer = new WsFlvMseLivePlayer({
+        videoEl: mseVideoEl,
+        onLog: pushLog,
+        onStatus: setStatus,
+        formatTime: fmt,
+        targetLatencySec: 3,
+        audioOnlyTargetLatencySec: 0.45,
+        audioOnlySegmentDurationMs: 220,
+        keepBehindSec: 30,
+      });
+      await livePlayer.start(url);
+    }
+
+    async function resolveLivePlaybackUrl(urlText) {
+      const u = new URL(urlText);
+      if (u.protocol === "ws:" || u.protocol === "wss:") return urlText;
+      if (u.protocol === "rtmp:" || u.protocol === "rtmps:") {
+        const out = await openRtmpThroughSidecar(urlText, {
+          onLog: pushLog,
+          onStatus: setStatus,
+        });
+        return out.wsUrl;
+      }
+      throw new Error("Live MSE expects ws(s):// FLV or rtmp(s):// input.");
+    }
+
     liveUrlBtn.addEventListener("click", async () => {
       loadFileBtn.disabled = true;
       loadUrlBtn.disabled = true;
       liveUrlBtn.disabled = true;
       try {
         const url = sourceUrlEl.value.trim();
-        if (!url) throw new Error("Enter a WS-FLV URL first.");
-        const u = new URL(url);
-        if (u.protocol !== "ws:" && u.protocol !== "wss:") throw new Error("Live MSE currently expects ws:// or wss:// FLV.");
-        player.stop();
-        stopMsePlayback({ release: true });
-        stopLivePlayback();
-        showMsePreview();
-        stateLabelEl.textContent = "live";
-        playheadSec = 0;
-        updateTimecode();
-        drawTimeline();
-        const token = activeMseToken;
-        liveCleanupDebugEvents = attachMsePlaybackDebugEvents();
-        liveStopFrameDebug = startMseVideoFrameDebug(token);
-        livePlayer = new WsFlvMseLivePlayer({
-          videoEl: mseVideoEl,
-          onLog: pushLog,
-          onStatus: setStatus,
-          formatTime: fmt,
-          targetLatencySec: 3,
-          audioOnlyTargetLatencySec: 0.45,
-          audioOnlySegmentDurationMs: 220,
-          keepBehindSec: 30,
-        });
-        await livePlayer.start(url);
+        if (!url) throw new Error("Enter a live URL first.");
+        const liveUrl = await resolveLivePlaybackUrl(url);
+        await startLiveWsFlvPlayback(liveUrl);
       } catch (err) {
         setStatus(`Live MSE failed: ${err?.message || String(err)}`);
         stopLivePlayback();

@@ -399,10 +399,10 @@
     <div class="toolbar">
       <input id="file" type="file" />
       <button id="analyze">Analyze</button>
-      <input id="sourceUrl" type="url" placeholder="http(s)://... or ws(s)://..." style="min-width:360px" />
+      <input id="sourceUrl" type="url" placeholder="http(s)://..., ws(s)://..., or rtmp(s)://..." style="min-width:360px" />
       <span class="url-capture-field">
         <label for="urlFetchDuration">拉流(s)</label>
-        <input id="urlFetchDuration" type="number" min="1" max="600" step="1" value="10" title="仅 ws/wss 拉流采集使用；http(s) 会直接读取完整响应" />
+        <input id="urlFetchDuration" type="number" min="1" max="600" step="1" value="10" title="仅 ws/wss/rtmp 拉流采集使用；http(s) 会直接读取完整响应" />
       </span>
       <button id="analyzeUrl">Analyze URL</button>
       <button id="saveCapture" disabled>Save File</button>
@@ -552,6 +552,7 @@
       collectWebSocketBinary,
       downloadBytesAsFile,
     } from "../lib/streaming/wsStreamCapture.js";
+    import { openRtmpThroughSidecar } from "../lib/streaming/rtmpSidecarBridge.js";
     import {
       computeHexBytesPerLine,
       buildHexViewRows,
@@ -652,6 +653,7 @@
     let timelineVideoTimesSorted = [];
     let timelineAudioTimesSorted = [];
     let frameListScrollRaf = 0;
+    let frameListRangeRaf = 0;
     let frameListInfoCache = new Map();
     let seiEditContext = null;
 
@@ -734,6 +736,23 @@
         (Number(fs?._isExHeader_value) === 1 && Number(fs?._packetType_value) === 0) ||
         /sequence\s+header|sequence\s+start|decoder\s*config|specific\s+config/i.test(remark)
       );
+    }
+    function isAudioConfigFrameForTimeline(frame) {
+      if (!frame || frame._mediaType !== "audio") return false;
+      const raw = frame._rawFrame || {};
+      const fs = raw.formatSpecific || frame.data || {};
+      const remark = String(raw.remark || frame._remark || fs.remark || "");
+      return !!(
+        Number(fs?._aacPacketType_value) === 0 ||
+        /audio\s*specific\s*config|decoder\s*config|specific\s+config/i.test(remark)
+      );
+    }
+    function isPlayableTimelineFrame(frame) {
+      const t = getFrameTimeSec(frame);
+      if (typeof t !== "number" || !Number.isFinite(t)) return false;
+      if (frame?._mediaType === "video") return !isVideoConfigFrameForList(frame);
+      if (frame?._mediaType === "audio") return !isAudioConfigFrameForTimeline(frame);
+      return false;
     }
     function normalizePictureTypeForList(frame) {
       if (!frame || frame._mediaType !== "video") return { label: "-", className: "", title: "non-video" };
@@ -1255,16 +1274,83 @@
       });
       return arr;
     }
+    function getFrameListRangeSec() {
+      const s = Number(segStartEl?.value);
+      const e = Number(segEndEl?.value);
+      if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+      return { startSec: s, endSec: e };
+    }
+    function isFrameInsideFrameListRange(frame, range = getFrameListRangeSec()) {
+      if (!range) return true;
+      const t = getFrameTimeSec(frame);
+      return typeof t === "number" && t >= range.startSec && t <= range.endSec;
+    }
+    function frameIdentityIndex(frame) {
+      const idx = Number(frame?.index);
+      return Number.isFinite(idx) ? idx : null;
+    }
+    function findFrameIndexInList(frames, frame) {
+      const idx = frameIdentityIndex(frame);
+      if (idx === null) return -1;
+      const mediaType = frame?._mediaType || null;
+      return frames.findIndex((f) => Number(f?.index) === idx && (!mediaType || f?._mediaType === mediaType));
+    }
+    function buildShownFrameList() {
+      const filter = filterEl.value;
+      const base = filter === "all" ? allFrames : getFilteredFrames(resultMap, filter, result?.format?.formatName);
+      const range = getFrameListRangeSec();
+      const ranged = range ? base.filter((f) => isFrameInsideFrameListRange(f, range)) : base;
+      return sortFramesByMode(ranged, orderModeEl.value);
+    }
+    function scheduleFrameListRangeRefresh() {
+      if (frameListRangeRaf) return;
+      frameListRangeRaf = requestAnimationFrame(() => {
+        frameListRangeRaf = 0;
+        rebuildList({
+          preserveSelection: true,
+          resetScroll: true,
+          resetCache: false,
+          drawTimeline: false,
+        });
+      });
+    }
+    function getAllFrameTimeBounds() {
+      const ts = (allFrames || [])
+        .map(getFrameTimeSec)
+        .filter((v) => typeof v === "number" && Number.isFinite(v));
+      if (!ts.length) return null;
+      const minT = Math.min(...ts);
+      let maxT = Math.max(...ts);
+      if (maxT <= minT) maxT = minT + 0.05;
+      return { minT, maxT };
+    }
 
     function getTimelineMediaBounds() {
       if (timelineBoundsCache) return timelineBoundsCache;
-      const ts = (allFrames || []).map(getFrameTimeSec).filter((v) => typeof v === "number");
+      let ts = (allFrames || [])
+        .filter(isPlayableTimelineFrame)
+        .map(getFrameTimeSec)
+        .filter((v) => typeof v === "number");
+      if (!ts.length) {
+        ts = (allFrames || []).map(getFrameTimeSec).filter((v) => typeof v === "number");
+      }
       if (!ts.length) return null;
       const minT = Math.min(...ts);
       let maxT = Math.max(...ts);
       if (maxT <= minT) maxT = minT + 0.05;
       timelineBoundsCache = { minT, maxT };
       return timelineBoundsCache;
+    }
+    function getSegmentClampBounds() {
+      const allBounds = getAllFrameTimeBounds();
+      const timelineBounds = getTimelineMediaBounds();
+      if (allBounds && timelineBounds) {
+        return {
+          minT: Math.min(allBounds.minT, timelineBounds.minT),
+          maxT: Math.max(allBounds.maxT, timelineBounds.maxT),
+        };
+      }
+      return allBounds || timelineBounds;
     }
     function timelineCssSize() {
       const w = timelineCanvasEl.clientWidth || 800;
@@ -1320,12 +1406,12 @@
       if (!timelineTrackTimesDirty) return;
       timelineTrackTimesDirty = false;
       timelineVideoTimesSorted = (allFrames || [])
-        .filter((f) => f._mediaType === "video")
+        .filter((f) => f._mediaType === "video" && isPlayableTimelineFrame(f))
         .map(getFrameTimeSec)
         .filter((t) => typeof t === "number")
         .sort((a, b) => a - b);
       timelineAudioTimesSorted = (allFrames || [])
-        .filter((f) => f._mediaType === "audio")
+        .filter((f) => f._mediaType === "audio" && isPlayableTimelineFrame(f))
         .map(getFrameTimeSec)
         .filter((t) => typeof t === "number")
         .sort((a, b) => a - b);
@@ -1557,11 +1643,14 @@
         if (!bounds) return;
         const { mx, g } = pickTimelineGeomFromClient(ev.clientX, ev.clientY);
         if (!g) return;
-        const minT = bounds.minT;
-        const maxT = bounds.maxT;
+        const timelineMinT = bounds.minT;
+        const timelineMaxT = bounds.maxT;
+        const clampBounds = getSegmentClampBounds() || bounds;
+        const minT = clampBounds.minT;
+        const maxT = clampBounds.maxT;
         const t = timelinePointerXToTime(mx, g);
         if (timelineDrag.type === "playhead") {
-          playheadSec = Math.max(minT, Math.min(maxT, t));
+          playheadSec = Math.max(timelineMinT, Math.min(timelineMaxT, t));
           scheduleDrawNleTimeline();
           return;
         }
@@ -1571,12 +1660,14 @@
           const pair = clampPair(t, outSec, minT, maxT);
           segStartEl.value = pair.a.toFixed(3);
           segEndEl.value = pair.b.toFixed(3);
+          scheduleFrameListRangeRefresh();
         } else if (timelineDrag.type === "out") {
           let inSec = Number(segStartEl.value);
           if (!Number.isFinite(inSec)) inSec = minT;
           const pair = clampPair(inSec, t, minT, maxT);
           segStartEl.value = pair.a.toFixed(3);
           segEndEl.value = pair.b.toFixed(3);
+          scheduleFrameListRangeRefresh();
         }
         scheduleDrawNleTimeline();
       };
@@ -1605,11 +1696,14 @@
         if (!kind) return;
         timelineDrag = { type: kind, pointerId: ev.pointerId };
         timelineCanvasEl.setPointerCapture(ev.pointerId);
-        const minT = bounds.minT;
-        const maxT = bounds.maxT;
+        const timelineMinT = bounds.minT;
+        const timelineMaxT = bounds.maxT;
+        const clampBounds = getSegmentClampBounds() || bounds;
+        const minT = clampBounds.minT;
+        const maxT = clampBounds.maxT;
         const t = timelinePointerXToTime(mx, g);
         if (kind === "playhead") {
-          playheadSec = Math.max(minT, Math.min(maxT, t));
+          playheadSec = Math.max(timelineMinT, Math.min(timelineMaxT, t));
           selectShownFrameForPlayhead(playheadSec, { decodeVideo: false });
         } else if (kind === "in") {
           let outSec = Number(segEndEl.value);
@@ -1617,12 +1711,14 @@
           const pair = clampPair(t, outSec, minT, maxT);
           segStartEl.value = pair.a.toFixed(3);
           segEndEl.value = pair.b.toFixed(3);
+          scheduleFrameListRangeRefresh();
         } else if (kind === "out") {
           let inSec = Number(segStartEl.value);
           if (!Number.isFinite(inSec)) inSec = minT;
           const pair = clampPair(inSec, t, minT, maxT);
           segStartEl.value = pair.a.toFixed(3);
           segEndEl.value = pair.b.toFixed(3);
+          scheduleFrameListRangeRefresh();
         }
         scheduleDrawNleTimeline();
         ev.preventDefault();
@@ -2017,7 +2113,8 @@
         if (framesSpacerEl) framesSpacerEl.style.height = "48px";
         framesBodyEl.style.transform = "translateY(0)";
         framesBodyEl.innerHTML = `<div class="field-empty">No frames in current filter.</div>`;
-        countEl.textContent = `frames: ${shownFrames.length}`;
+        const range = getFrameListRangeSec();
+        countEl.textContent = `frames: ${shownFrames.length}${range ? " in range" : ""}`;
         return;
       }
       const fmtTimeSec = (v) => (typeof v === "number" && Number.isFinite(v) ? v.toFixed(3) : "-");
@@ -2060,23 +2157,34 @@
         `;
       }).join("");
       framesBodyEl.innerHTML = rows;
-      countEl.textContent = `frames: ${shownFrames.length}`;
+      const range = getFrameListRangeSec();
+      countEl.textContent = `frames: ${shownFrames.length}${range ? " in range" : ""}`;
     }
-    function rebuildList() {
-      const filter = filterEl.value;
-      const base = filter === "all" ? allFrames : getFilteredFrames(resultMap, filter, result?.format?.formatName);
-      shownFrames = sortFramesByMode(base, orderModeEl.value);
-      selectedIndex = shownFrames.length > 0 ? 0 : -1;
-      frameListInfoCache = new Map();
-      if (framesScrollEl) framesScrollEl.scrollTop = 0;
-      renderFrames();
+    function rebuildList(opts = {}) {
+      const {
+        preserveSelection = false,
+        resetScroll = true,
+        resetCache = true,
+        drawTimeline = true,
+      } = opts;
+      const prevFrame = preserveSelection ? selectedFrame() : null;
+      shownFrames = buildShownFrameList();
+      const preservedIndex = preserveSelection ? findFrameIndexInList(shownFrames, prevFrame) : -1;
+      selectedIndex = preservedIndex >= 0 ? preservedIndex : (shownFrames.length > 0 ? 0 : -1);
+      if (resetCache) frameListInfoCache = new Map();
+      if (framesScrollEl && resetScroll) {
+        framesScrollEl.scrollTop = selectedIndex > 0
+          ? Math.max(0, FRAME_HEADER_H + selectedIndex * FRAME_ROW_H - FRAME_ROW_H * 2)
+          : 0;
+      }
+      renderFrames({ drawTimeline });
       const sf = selectedFrame();
       renderSelectedInfo(sf);
       renderHex(sf);
       renderSelectedTree(sf);
       renderStatsPanel();
       refreshSeiEditorForSelection();
-      scheduleDrawNleTimeline();
+      if (drawTimeline) scheduleDrawNleTimeline();
     }
 
     async function runVideoFrameDecodeFlow(frameWrapper, options = {}) {
@@ -2333,29 +2441,32 @@
       allFrames = getFrames(resultMap, format);
       frameListInfoCache = new Map();
       markTimelineTrackTimesDirty();
-      shownFrames = sortFramesByMode(allFrames, orderModeEl.value);
-      selectedIndex = shownFrames.length > 0 ? 0 : -1;
-      if (framesScrollEl) framesScrollEl.scrollTop = 0;
-      renderFrames();
-      const sf = selectedFrame();
-      renderSelectedInfo(sf);
-      renderHex(sf);
-      renderSelectedTree(sf);
-      renderStatsPanel();
-      applyVideoPreviewShellSizing();
-      const timeline = allFrames.map(getFrameTimeSec).filter((v) => typeof v === "number");
-      if (timeline.length > 0) {
-        const minTs = Math.min(...timeline);
-        const maxTs = Math.max(...timeline);
-        if (!segStartEl.value) segStartEl.value = minTs.toFixed(3);
-        if (!segEndEl.value) segEndEl.value = maxTs.toFixed(3);
-        const tsSel = getFrameTimeSec(sf);
-        playheadSec = typeof tsSel === "number" ? tsSel : minTs;
-        scheduleDrawNleTimeline();
+      const allBounds = getAllFrameTimeBounds();
+      const bounds = getTimelineMediaBounds();
+      if (allBounds) {
+        segStartEl.value = allBounds.minT.toFixed(3);
+        segEndEl.value = allBounds.maxT.toFixed(3);
+        playheadSec = allBounds.minT;
       } else {
+        segStartEl.value = "";
+        segEndEl.value = "";
         playheadSec = null;
-        scheduleDrawNleTimeline();
       }
+      rebuildList({
+        preserveSelection: false,
+        resetScroll: true,
+        resetCache: false,
+        drawTimeline: true,
+      });
+      const sf = selectedFrame();
+      const tsSel = getFrameTimeSec(sf);
+      if (typeof tsSel === "number") {
+        playheadSec = tsSel;
+      } else if (bounds && typeof bounds.minT === "number") {
+        playheadSec = bounds.minT;
+      }
+      applyVideoPreviewShellSizing();
+      scheduleDrawNleTimeline();
       libEnsureTinyH264WorkerReady()
         .then(() => {
           console.info("[tinyh264] warmup ready");
@@ -2403,6 +2514,7 @@
         let bytes = null;
         let urlFetchDurationSec = null;
         let actualFetchTimeSec = null;
+        let sidecarWsUrl = null;
         if (u.protocol === "http:" || u.protocol === "https:") {
           setStatus(`Fetching ${urlText} ...`);
           bytes = await readBytesFromHttp(urlText);
@@ -2410,6 +2522,22 @@
           urlFetchDurationSec = getUrlFetchDurationSec();
           setStatus(`Connecting ${urlText} ...`);
           const out = await collectWebSocketBinary(urlText, {
+            fetchDurationSec: urlFetchDurationSec,
+            onProgress: (msg) => {
+              if (msg) setStatus(msg);
+            },
+          });
+          bytes = out?.bytes instanceof Uint8Array ? out.bytes : null;
+          actualFetchTimeSec = Number.isFinite(out?.actualFetchTimeSec) ? out.actualFetchTimeSec : null;
+        } else if (u.protocol === "rtmp:" || u.protocol === "rtmps:") {
+          urlFetchDurationSec = getUrlFetchDurationSec();
+          setStatus(`Opening RTMP sidecar ${urlText} ...`);
+          const sidecar = await openRtmpThroughSidecar(urlText, {
+            onStatus: setStatus,
+          });
+          sidecarWsUrl = sidecar.wsUrl;
+          setStatus(`Capturing ${sidecarWsUrl} ...`);
+          const out = await collectWebSocketBinary(sidecarWsUrl, {
             fetchDurationSec: urlFetchDurationSec,
             onProgress: (msg) => {
               if (msg) setStatus(msg);
@@ -2429,6 +2557,7 @@
           fileSize: bytes.length,
           fileType: "application/octet-stream",
           sourceUrl: urlText,
+          sidecarWsUrl,
           fetchDurationSec: urlFetchDurationSec,
           actualFetchTimeSec,
           fetchedAt: Date.now(),
@@ -2537,6 +2666,7 @@
       const ts = getSelectedFramePtsSec();
       if (typeof ts === "number") {
         segStartEl.value = ts.toFixed(3);
+        scheduleFrameListRangeRefresh();
         scheduleDrawNleTimeline();
       }
     });
@@ -2544,11 +2674,12 @@
       const ts = getSelectedFramePtsSec();
       if (typeof ts === "number") {
         segEndEl.value = ts.toFixed(3);
+        scheduleFrameListRangeRefresh();
         scheduleDrawNleTimeline();
       }
     });
     markInBtn?.addEventListener("click", () => {
-      const b = getTimelineMediaBounds();
+      const b = getSegmentClampBounds();
       if (!b || typeof playheadSec !== "number" || !Number.isFinite(playheadSec)) {
         setStatus("请先在时间轴上放置播放头。");
         return;
@@ -2558,10 +2689,11 @@
       const pair = clampPair(playheadSec, outSec, b.minT, b.maxT);
       segStartEl.value = pair.a.toFixed(3);
       segEndEl.value = pair.b.toFixed(3);
+      scheduleFrameListRangeRefresh();
       scheduleDrawNleTimeline();
     });
     markOutBtn?.addEventListener("click", () => {
-      const b = getTimelineMediaBounds();
+      const b = getSegmentClampBounds();
       if (!b || typeof playheadSec !== "number" || !Number.isFinite(playheadSec)) {
         setStatus("请先在时间轴上放置播放头。");
         return;
@@ -2571,10 +2703,17 @@
       const pair = clampPair(inSec, playheadSec, b.minT, b.maxT);
       segStartEl.value = pair.a.toFixed(3);
       segEndEl.value = pair.b.toFixed(3);
+      scheduleFrameListRangeRefresh();
       scheduleDrawNleTimeline();
     });
-    segStartEl.addEventListener("input", () => scheduleDrawNleTimeline());
-    segEndEl.addEventListener("input", () => scheduleDrawNleTimeline());
+    segStartEl.addEventListener("input", () => {
+      scheduleFrameListRangeRefresh();
+      scheduleDrawNleTimeline();
+    });
+    segEndEl.addEventListener("input", () => {
+      scheduleFrameListRangeRefresh();
+      scheduleDrawNleTimeline();
+    });
     playSegVideoBtn.addEventListener("click", () => {
       playVideoSegmentByPts().catch((err) => {
         setStatus(`Segment video play failed: ${err?.message || String(err)}`);

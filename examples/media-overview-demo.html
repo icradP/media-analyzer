@@ -112,7 +112,7 @@
 <body>
   <div class="wrap">
     <h1>mediaOverview Example Page</h1>
-    <p>Analyze from local file, HTTPS URL, or WS stream and render <code>formatSpecific.mediaOverview</code>.</p>
+    <p>Analyze from local file, HTTPS URL, WS stream, or RTMP stream and render <code>formatSpecific.mediaOverview</code>.</p>
 
     <div class="row">
       <label for="mode">Source</label>
@@ -120,9 +120,10 @@
         <option value="file">Local file</option>
         <option value="https">HTTPS URL</option>
         <option value="ws">WS stream</option>
+        <option value="rtmp">RTMP stream</option>
       </select>
-      <input id="url" type="text" placeholder="https://... or ws://..." />
-      <label for="wsSeconds">WS sec</label>
+      <input id="url" type="text" placeholder="https://..., ws://..., or rtmp://..." />
+      <label for="wsSeconds">Stream sec</label>
       <input id="wsSeconds" type="number" value="10" min="1" max="120" />
     </div>
 
@@ -132,7 +133,7 @@
       <button id="save" disabled>Save File</button>
       <button id="clear">Clear</button>
     </div>
-    <div id="status" class="status">Ready. HTTPS requires CORS-enabled URL.</div>
+    <div id="status" class="status">Ready. HTTPS requires CORS-enabled URL. RTMP uses the local sidecar.</div>
 
     <div class="grid">
       <section class="card">
@@ -166,6 +167,7 @@
       collectWebSocketBinary,
       downloadBytesAsFile,
     } from "../lib/streaming/wsStreamCapture.js";
+    import { openRtmpThroughSidecar } from "../lib/streaming/rtmpSidecarBridge.js";
 
     const fileInput = document.getElementById("file");
     const modeEl = document.getElementById("mode");
@@ -269,6 +271,36 @@
             fetchedAt: Date.now(),
           },
           hint: `${url} (${sec}s)`,
+        };
+      }
+      if (mode === "rtmp") {
+        const url = (urlEl.value || "").trim();
+        if (!url) throw new Error("Please input RTMP URL.");
+        if (!/^rtmps?:\/\//i.test(url)) throw new Error("RTMP mode needs rtmp:// or rtmps:// URL.");
+        const sec = Math.max(1, Number(wsSecondsEl.value) || 10);
+        statusEl.textContent = `Opening RTMP sidecar ${url} ...`;
+        const sidecar = await openRtmpThroughSidecar(url, {
+          onStatus: (msg) => {
+            if (msg) statusEl.textContent = msg;
+          },
+        });
+        const out = await collectWebSocketBinary(sidecar.wsUrl, {
+          fetchDurationSec: sec,
+          onProgress: (msg) => {
+            if (msg) statusEl.textContent = msg;
+          },
+        });
+        return {
+          bytes: out.bytes,
+          meta: {
+            fileName: out.streamUrl,
+            fileSize: out.bytes.byteLength,
+            fileType: "application/octet-stream",
+            sourceUrl: url,
+            sidecarWsUrl: out.streamUrl,
+            fetchedAt: Date.now(),
+          },
+          hint: `${url} (${sec}s via RTMP sidecar)`,
         };
       }
       throw new Error(`Unsupported mode: ${mode}`);
