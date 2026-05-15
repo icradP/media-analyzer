@@ -69,7 +69,14 @@
       gap: 8px;
       align-items: stretch;
     }
-    .monitor-sei-card {
+    .monitor-ai-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+    }
+    .monitor-sei-card,
+    .monitor-detector-card {
       border: 1px solid var(--border);
       border-radius: 8px;
       background: #101726;
@@ -77,7 +84,8 @@
       min-height: 120px;
       overflow: auto;
     }
-    .monitor-sei-card .title { margin-bottom: 6px; }
+    .monitor-sei-card .title,
+    .monitor-detector-card .title { margin-bottom: 6px; }
     .monitor-side {
       display: grid;
       grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
@@ -133,6 +141,7 @@
       color: var(--muted);
     }
     .transport .seg-field input { width: 108px; }
+    .transport .seg-field input[type="checkbox"] { width: auto; }
     .btn-primary { border-color: #3d6fa8; background: #1a2d45; }
     #timelineCanvas {
       width: 100%;
@@ -402,6 +411,49 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
+    .detector-tools,
+    .detector-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .detector-row input[type="number"] { width: 82px; }
+    .detector-model {
+      width: 100%;
+      min-width: 0;
+      font-size: 12px;
+    }
+    .detector-meta {
+      min-height: 18px;
+      margin: 6px 0;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .detector-list {
+      display: grid;
+      gap: 4px;
+      max-height: 138px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f1622;
+      padding: 6px;
+      font-size: 12px;
+    }
+    .detector-item {
+      display: grid;
+      grid-template-columns: minmax(88px, 1fr) auto;
+      gap: 8px;
+      color: #d6e6ff;
+    }
+    .detector-score {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
     @media (max-width: 1100px) {
       .right-grid { grid-template-columns: 1fr; }
       .monitor-main { grid-template-columns: 1fr; }
@@ -412,7 +464,7 @@
 <body>
   <div class="wrap">
     <h1>Frame Analysis Example</h1>
-    <div class="muted">逐帧分析 + HexDataView + 单帧音频播放 + 视频帧浏览器解码(canvas)。时间标尺与横向帧块合并为统一时间区并横向铺满主页面。</div>
+    <div class="muted">逐帧分析 + HexDataView + 单帧音频播放 + 视频帧浏览器解码(canvas) + ONNX Runtime Web 目标识别。时间标尺与横向帧块合并为统一时间区并横向铺满主页面。</div>
     <div class="toolbar">
       <input id="file" type="file" />
       <button id="analyze">Analyze</button>
@@ -453,25 +505,53 @@
           <div id="videoPreviewShell" class="video-preview-shell">
             <canvas id="videoCanvas"></canvas>
           </div>
-          <section class="monitor-sei-card">
-            <h2 class="title">SEI Editor (H264)</h2>
-            <div class="sei-tools">
-              <button id="extractSei">Extract SEI From Selected</button>
-              <button id="applySei">Apply / Insert SEI</button>
-            </div>
-            <div id="seiMeta" class="sei-meta">No SEI extracted.</div>
-            <div id="seiFields" class="sei-fields"><div class="sei-field-k">state</div><div class="sei-field-v">-</div></div>
-            <div class="sei-tools-mini">
-              <label for="seiPayloadType">SEI Type</label>
-              <select id="seiPayloadType"></select>
-            </div>
-            <textarea id="seiText" class="sei-text" placeholder="Editable payload hex bytes only. NAL header, payloadType, payloadSize, UUID/prefix fields and trailing bits are generated automatically."></textarea>
-            <div class="sei-tools-mini">
-              <button id="seiHexToAscii">Hex -> ASCII</button>
-              <button id="seiAsciiToHex">ASCII -> Hex</button>
-            </div>
-            <textarea id="seiAsciiText" class="sei-text" placeholder="Payload ASCII view/editor (currently ASCII only)."></textarea>
-          </section>
+          <div class="monitor-ai-stack">
+            <section class="monitor-detector-card">
+              <h2 class="title">Object Detection (ONNX WebGPU)</h2>
+              <div class="detector-tools">
+                <button id="detectObjects" class="btn-primary">Detect Selected Frame</button>
+                <label for="detectorProvider">EP</label>
+                <select id="detectorProvider">
+                  <option value="auto">auto</option>
+                  <option value="webgpu">webgpu</option>
+                  <option value="wasm">wasm</option>
+                </select>
+              </div>
+              <div class="detector-row">
+                <label for="detectorModelPreset">model</label>
+                <select id="detectorModelPreset">
+                  <option value="local" selected>本地 model.onnx</option>
+                  <option value="remote">远程 HuggingFace</option>
+                </select>
+                <label for="detectorScore">score</label>
+                <input id="detectorScore" type="number" min="0.05" max="0.95" step="0.05" value="0.35" />
+                <label for="detectorMax">max</label>
+                <input id="detectorMax" type="number" min="1" max="100" step="1" value="20" />
+              </div>
+              <input id="detectorModelUrl" class="detector-model" type="url" />
+              <div id="detectorMeta" class="detector-meta">Ready.</div>
+              <div id="detectorList" class="detector-list"><div class="muted">No detections.</div></div>
+            </section>
+            <section class="monitor-sei-card">
+              <h2 class="title">SEI Editor (H264)</h2>
+              <div class="sei-tools">
+                <button id="extractSei">Extract SEI From Selected</button>
+                <button id="applySei">Apply / Insert SEI</button>
+              </div>
+              <div id="seiMeta" class="sei-meta">No SEI extracted.</div>
+              <div id="seiFields" class="sei-fields"><div class="sei-field-k">state</div><div class="sei-field-v">-</div></div>
+              <div class="sei-tools-mini">
+                <label for="seiPayloadType">SEI Type</label>
+                <select id="seiPayloadType"></select>
+              </div>
+              <textarea id="seiText" class="sei-text" placeholder="Editable payload hex bytes only. NAL header, payloadType, payloadSize, UUID/prefix fields and trailing bits are generated automatically."></textarea>
+              <div class="sei-tools-mini">
+                <button id="seiHexToAscii">Hex -> ASCII</button>
+                <button id="seiAsciiToHex">ASCII -> Hex</button>
+              </div>
+              <textarea id="seiAsciiText" class="sei-text" placeholder="Payload ASCII view/editor (currently ASCII only)."></textarea>
+            </section>
+          </div>
           <div class="monitor-side">
             <section class="monitor-info-card">
               <h2 class="title">Selected Frame</h2>
@@ -486,6 +566,10 @@
         </div>
         <div class="transport">
           <button id="playSegVideo" class="btn-primary">播放视频选区</button>
+          <label class="seg-field" for="detectOnSegmentPlay">
+            <input id="detectOnSegmentPlay" type="checkbox" />
+            自动识别
+          </label>
           <button id="playSegAudio" class="btn-primary">播放音频选区</button>
           <button id="stopSeg">停止</button>
           <span class="seg-field"><label for="segStart">入点 (s)</label><input id="segStart" type="number" step="0.001" placeholder="start" /></span>
@@ -598,6 +682,11 @@
       buildH264SeiNaluFromPayload,
       insertH264SeiIntoFrame,
       applyH264SeiPatch,
+      DEFAULT_LOCAL_OBJECT_DETECTION_MODEL_URL,
+      DEFAULT_OBJECT_DETECTION_MODEL_URL,
+      createObjectDetector,
+      createObjectDetectionStabilizer,
+      drawObjectDetections,
     } from "../lib/browser/index.js";
     import { VideoSegmentPlayer } from "../lib/player/index.js";
 
@@ -614,6 +703,7 @@
     const setSegStartBtn = document.getElementById("setSegStart");
     const setSegEndBtn = document.getElementById("setSegEnd");
     const playSegVideoBtn = document.getElementById("playSegVideo");
+    const detectOnSegmentPlayEl = document.getElementById("detectOnSegmentPlay");
     const playSegAudioBtn = document.getElementById("playSegAudio");
     const stopSegBtn = document.getElementById("stopSeg");
     const clearBtn = document.getElementById("clear");
@@ -641,6 +731,14 @@
     const seiPayloadTypeEl = document.getElementById("seiPayloadType");
     const seiTextEl = document.getElementById("seiText");
     const seiAsciiTextEl = document.getElementById("seiAsciiText");
+    const detectObjectsBtn = document.getElementById("detectObjects");
+    const detectorProviderEl = document.getElementById("detectorProvider");
+    const detectorScoreEl = document.getElementById("detectorScore");
+    const detectorMaxEl = document.getElementById("detectorMax");
+    const detectorModelPresetEl = document.getElementById("detectorModelPreset");
+    const detectorModelUrlEl = document.getElementById("detectorModelUrl");
+    const detectorMetaEl = document.getElementById("detectorMeta");
+    const detectorListEl = document.getElementById("detectorList");
     const copyFailureBtn = document.getElementById("copyFailure");
     const clearFailureBtn = document.getElementById("clearFailure");
     const canvasEl = document.getElementById("videoCanvas");
@@ -683,6 +781,18 @@
     let frameListRangeRaf = 0;
     let frameListInfoCache = new Map();
     let seiEditContext = null;
+    let objectDetector = null;
+    let objectDetectorKey = "";
+    let objectDetectionStabilizer = createObjectDetectionStabilizer({
+      jitterThresholdPx: 8,
+      smoothAlpha: 0.62,
+      maxMissed: 3,
+      resetFrameGap: 8,
+    });
+    let decodedCanvasFrameIndex = null;
+    let objectDetectionBaseFrameIndex = null;
+    let objectDetectionBaseImageData = null;
+    let segmentAutoDetectQueue = Promise.resolve();
 
     const FRAME_ROW_H = 28;
     const FRAME_HEADER_H = 30;
@@ -694,7 +804,37 @@
     const TL_PAD_R = 10;
     const TL_PAD_B = 6;
 
+    function detectorModelUrlForPreset(preset) {
+      return preset === "remote"
+        ? DEFAULT_OBJECT_DETECTION_MODEL_URL
+        : DEFAULT_LOCAL_OBJECT_DETECTION_MODEL_URL;
+    }
+    function syncDetectorModelUrlFromPreset() {
+      if (!detectorModelUrlEl || !detectorModelPresetEl) return;
+      detectorModelUrlEl.value = detectorModelUrlForPreset(detectorModelPresetEl.value);
+    }
+    syncDetectorModelUrlFromPreset();
+    detectorModelPresetEl?.addEventListener("change", syncDetectorModelUrlFromPreset);
+
     function setStatus(text) { statusEl.textContent = text; }
+    function clearDecodedCanvasState() {
+      decodedCanvasFrameIndex = null;
+      objectDetectionBaseFrameIndex = null;
+      objectDetectionBaseImageData = null;
+    }
+    function markCanvasDecodedFrame(frameIndex) {
+      const idx = Number(frameIndex);
+      decodedCanvasFrameIndex = Number.isFinite(idx) ? idx : null;
+      objectDetectionBaseFrameIndex = null;
+      objectDetectionBaseImageData = null;
+    }
+    function canvasHasFrame(frame) {
+      const idx = Number(frame?.index);
+      return Number.isFinite(idx) &&
+        Number(decodedCanvasFrameIndex) === idx &&
+        canvasEl.width > 1 &&
+        canvasEl.height > 1;
+    }
     function inferNameFromUrl(urlText) {
       try {
         const u = new URL(urlText);
@@ -901,6 +1041,7 @@
       renderHex(sf);
       renderSelectedTree(sf);
       refreshSeiEditorForSelection();
+      clearObjectDetection("Ready.");
       if (opts.scroll !== false) scrollFrameRowIntoView(shownIdx);
     }
     function frameOffsetValue(f) {
@@ -1279,6 +1420,132 @@
       syncPlaybackCursorByGlobalFrameIndex(keepFrameIndex, { scroll: true });
       setStatus(`SEI payload ${operation} @ frame ${keepFrameIndex} (type=${payloadType}, payload=${payloadBytes.length} bytes, delta=${delta >= 0 ? "+" : ""}${delta}). Click Save File to export patched media.`);
       extractSeiFromSelectedFrame();
+    }
+    function readDetectorSettings() {
+      const modelUrl = (detectorModelUrlEl?.value || DEFAULT_LOCAL_OBJECT_DETECTION_MODEL_URL).trim();
+      const provider = detectorProviderEl?.value || "auto";
+      const scoreThreshold = Math.max(0.01, Math.min(0.99, Number(detectorScoreEl?.value) || 0.35));
+      const maxDetections = Math.max(1, Math.min(100, Math.round(Number(detectorMaxEl?.value) || 20)));
+      return { modelUrl, provider, scoreThreshold, maxDetections };
+    }
+    async function ensureObjectDetectorForSettings(settings) {
+      const key = `${settings.modelUrl}|${settings.provider}`;
+      if (objectDetector && objectDetectorKey === key) {
+        return { detector: objectDetector, initMs: 0, reused: true };
+      }
+      if (objectDetector && typeof objectDetector.dispose === "function") {
+        await objectDetector.dispose().catch(() => {});
+      }
+      const start = performance.now();
+      objectDetector = createObjectDetector({
+        modelUrl: settings.modelUrl,
+        provider: settings.provider,
+        scoreThreshold: settings.scoreThreshold,
+        maxDetections: settings.maxDetections,
+      });
+      await objectDetector.init();
+      objectDetectorKey = key;
+      objectDetectionStabilizer.reset();
+      return { detector: objectDetector, initMs: performance.now() - start, reused: false };
+    }
+    function clearObjectDetection(note = "No detections.") {
+      if (detectorMetaEl) detectorMetaEl.textContent = note;
+      if (detectorListEl) detectorListEl.innerHTML = `<div class="muted">${esc(note)}</div>`;
+    }
+    function renderObjectDetectionResult(out) {
+      const detections = Array.isArray(out?.detections) ? out.detections : [];
+      if (detectorMetaEl) {
+        const initText = Number(out?.initMs || 0) > 0 ? `, init=${Number(out.initMs).toFixed(1)}ms` : "";
+        const totalText = Number(out?.totalMs || 0) > 0 ? `, total=${Number(out.totalMs).toFixed(1)}ms` : "";
+        const rawCount = Array.isArray(out?.rawDetections) ? out.rawDetections.length : detections.length;
+        detectorMetaEl.textContent = `provider=${out?.provider || "-"}, model=${out?.modelInputSize || "-"}px, detections=${detections.length}/${rawCount}, run=${Number(out?.inferenceMs || 0).toFixed(1)}ms${initText}${totalText}`;
+      }
+      if (!detectorListEl) return;
+      if (!detections.length) {
+        detectorListEl.innerHTML = `<div class="muted">No detections above threshold.</div>`;
+        return;
+      }
+      detectorListEl.innerHTML = detections.map((det) => {
+        const box = `${Math.round(det.x)},${Math.round(det.y)} ${Math.round(det.width)}x${Math.round(det.height)}`;
+        return `<div class="detector-item"><span>${esc(det.label)} <span class="muted">${esc(box)}</span></span><span class="detector-score">${(det.score * 100).toFixed(1)}%</span></div>`;
+      }).join("");
+    }
+    function isSegmentPlayActive(token) {
+      return token === segmentPlayToken;
+    }
+    function enqueueSegmentAutoDetect(frameIndex, token) {
+      if (!detectOnSegmentPlayEl?.checked || !isSegmentPlayActive(token)) return;
+      segmentAutoDetectQueue = segmentAutoDetectQueue
+        .then(() => detectObjectsOnCanvasFrame({
+          frameIndex,
+          segmentToken: token,
+          updateStatus: false,
+        }))
+        .catch((err) => {
+          console.warn("segment-auto-detect", err);
+        });
+    }
+    async function detectObjectsOnCanvasFrame({
+      frameIndex = null,
+      frameWrapper = null,
+      segmentToken = null,
+      updateStatus = true,
+    } = {}) {
+      const sf = frameWrapper ||
+        (Number.isFinite(Number(frameIndex)) ? allFrames.find((f) => Number(f?.index) === Number(frameIndex)) : null) ||
+        selectedFrame();
+      if (!sf || sf._mediaType !== "video") throw new Error("Video frame is required for object detection.");
+      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
+      const settings = readDetectorSettings();
+      if (!settings.modelUrl) throw new Error("Object detection model URL is required.");
+      const totalStart = performance.now();
+      const idx = Number(sf.index);
+      const ctx = canvasEl.getContext("2d");
+      const canRestoreBase =
+        Number.isFinite(idx) &&
+        objectDetectionBaseImageData &&
+        Number(objectDetectionBaseFrameIndex) === idx &&
+        objectDetectionBaseImageData.width === canvasEl.width &&
+        objectDetectionBaseImageData.height === canvasEl.height;
+      if (canRestoreBase && ctx) {
+        ctx.putImageData(objectDetectionBaseImageData, 0, 0);
+        decodedCanvasFrameIndex = idx;
+      } else if (!canvasHasFrame(sf)) {
+        if (segmentToken !== null) return null;
+        if (detectorMetaEl) detectorMetaEl.textContent = "Decoding selected frame before detection...";
+        const decoded = await runVideoFrameDecodeFlow(sf, {
+          context: "object-detection",
+          recordFailureSnapshot: true,
+          preserveCanvas: false,
+        });
+        if (decoded?.mode === "failed") throw new Error("Frame decode failed; object detection needs a decoded canvas frame.");
+      }
+      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
+      const detectorReady = await ensureObjectDetectorForSettings(settings);
+      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
+      const detector = detectorReady.detector;
+      if (detectorMetaEl) detectorMetaEl.textContent = `Loading/running ONNX model with ${settings.provider}...`;
+      if (updateStatus) setStatus(`Running object detection on frame=${sf.index} ...`);
+      const out = await detector.detectCanvas(canvasEl, {
+        scoreThreshold: settings.scoreThreshold,
+        maxDetections: settings.maxDetections,
+      });
+      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
+      out.initMs = detectorReady.initMs;
+      out.totalMs = performance.now() - totalStart;
+      out.rawDetections = out.detections;
+      out.detections = objectDetectionStabilizer.update(out.rawDetections, { frameIndex: idx });
+      if (ctx) {
+        objectDetectionBaseImageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+        objectDetectionBaseFrameIndex = idx;
+      }
+      drawObjectDetections(canvasEl, out.detections);
+      renderObjectDetectionResult(out);
+      if (updateStatus) setStatus(`Object detection done @ frame ${sf.index}: ${out.detections.length} detection(s).`);
+      return out;
+    }
+    async function detectObjectsOnSelectedFrame() {
+      await detectObjectsOnCanvasFrame({ updateStatus: true });
     }
     function getFrameTimeSec(f) {
       const rf = f?._rawFrame || {};
@@ -1730,6 +1997,7 @@
       renderSelectedInfo(sf);
       renderHex(sf);
       renderSelectedTree(sf);
+      clearObjectDetection("Ready.");
       if (decodeVideo && sf?._mediaType === "video") {
         decodeSelectedVideoFrame().catch((err) => {
           console.error("decodeSelectedVideoFrame guard", err);
@@ -1867,6 +2135,7 @@
 
     function stopSegmentPlayback() {
       segmentPlayToken += 1;
+      segmentAutoDetectQueue = Promise.resolve();
       if (activeVideoSegmentPlayer) {
         activeVideoSegmentPlayer.stop();
         activeVideoSegmentPlayer = null;
@@ -1894,6 +2163,7 @@
       const ctx = canvasEl.getContext("2d");
       if (!ctx) return;
       ctx.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
+      clearDecodedCanvasState();
     }
     function getPrimaryVideoStreamSize() {
       const vs = (result?.streams || []).find((s) => s.codecType === "video");
@@ -1921,6 +2191,7 @@
     function drawAudioWaveformFrame(analyser, dataArray) {
       const ctx = canvasEl.getContext("2d");
       if (!ctx) return;
+      clearDecodedCanvasState();
       const { w: width, h: height } = previewShellBitmapCssPixels();
       if (canvasEl.width !== width || canvasEl.height !== height) {
         canvasEl.width = width;
@@ -2288,6 +2559,7 @@
       renderSelectedTree(sf);
       renderStatsPanel();
       refreshSeiEditorForSelection();
+      clearObjectDetection("Ready.");
       if (drawTimeline) scheduleDrawNleTimeline();
     }
 
@@ -2306,6 +2578,7 @@
       if (!preserveCanvas) {
         const ctx2d = canvasEl.getContext("2d");
         if (ctx2d) ctx2d.clearRect(0, 0, canvasEl.width || 0, canvasEl.height || 0);
+        clearDecodedCanvasState();
       }
       let webcodecsErr = null;
       try {
@@ -2322,6 +2595,7 @@
           codec: out?.codec || null,
         });
         setStatus(`Video decode done. strategy=${out?.strategy || "-"}, codec=${out?.codec || "-"}`);
+        markCanvasDecodedFrame(raw.index);
         return { mode: "webcodecs", strategy: out?.strategy, codec: out?.codec };
       } catch (err) {
         webcodecsErr = err;
@@ -2352,6 +2626,7 @@
       // 3) tinyh264 fallback — same as single-frame error path.
       try {
         await fallbackDecodeGopByMse(frameWrapper, webcodecsErr);
+        markCanvasDecodedFrame(raw.index);
         return { mode: "tinyh264-fallback", webcodecsError: webcodecsErr };
       } catch (fallbackErr) {
         console.error("tinyh264-fallback-error", { context, frameIndex: raw?.index, error: fallbackErr });
@@ -2417,7 +2692,17 @@
           recordFailureSnapshot: false,
           preserveCanvas: true,
         });
-        if (out?.mode !== "failed") rendered += 1;
+        if (out?.mode !== "failed") {
+          rendered += 1;
+          if (detectOnSegmentPlayEl?.checked) {
+            await detectObjectsOnCanvasFrame({
+              frameIndex: Number(fw.index),
+              frameWrapper: fw,
+              segmentToken: token,
+              updateStatus: false,
+            }).catch((err) => console.warn("segment-auto-detect", err));
+          }
+        }
       }
       if (rendered <= 0 && originalError) throw originalError;
       setStatus(`Segment fallback play done. rendered=${rendered}/${targets.length}`);
@@ -2440,6 +2725,7 @@
           if (token !== segmentPlayToken) return;
           const frameIndex = Number(item?.frameIndex);
           if (!Number.isFinite(frameIndex)) return;
+          markCanvasDecodedFrame(frameIndex);
           syncPlaybackCursorByGlobalFrameIndex(frameIndex, { scroll: false });
           const fw = allFrames.find((f) => Number(f?.index) === frameIndex);
           const tt = fw ? getFrameTimeSec(fw) : null;
@@ -2447,6 +2733,7 @@
             playheadSec = tt;
             scheduleDrawNleTimeline();
           }
+          enqueueSegmentAutoDetect(frameIndex, token);
         },
         onError: (err) => {
           console.error("segment-video-player-error", err);
@@ -2532,6 +2819,8 @@
     async function applyAnalyzeResult(bytes, fileMeta) {
       currentFileBytes = bytes;
       currentSourceMeta = fileMeta || {};
+      objectDetectionStabilizer.reset();
+      clearDecodedCanvasState();
       currentDownloadName = buildCapturedMediaFileName({
         bytes,
         fileName: currentSourceMeta.fileName,
@@ -2691,6 +2980,7 @@
       renderHex(sf);
       renderSelectedTree(sf);
       refreshSeiEditorForSelection();
+      clearObjectDetection("Ready.");
       decodeSelectedVideoFrame().catch((err) => {
         console.error("decodeSelectedVideoFrame guard", err);
         setStatus(`Decode setup failed: ${err?.message || String(err)}`);
@@ -2868,6 +3158,12 @@
         setStatus(`SEI apply failed: ${err?.message || String(err)}`);
       });
     });
+    detectObjectsBtn?.addEventListener("click", () => {
+      detectObjectsOnSelectedFrame().catch((err) => {
+        clearObjectDetection(err?.message || "Object detection failed.");
+        setStatus(`Object detection failed: ${err?.message || String(err)}`);
+      });
+    });
     seiHexToAsciiBtn?.addEventListener("click", () => {
       try {
         const bytes = hexToBytes(seiTextEl?.value || "");
@@ -2925,7 +3221,9 @@
       if (framesScrollEl) framesScrollEl.scrollTop = 0;
       clearPlaybackCanvas();
       playheadSec = null;
+      objectDetectionStabilizer.reset();
       clearSeiEditor();
+      clearObjectDetection("No detections.");
       applyVideoPreviewShellSizing();
       scheduleDrawNleTimeline();
       setStatus("Cleared.");
