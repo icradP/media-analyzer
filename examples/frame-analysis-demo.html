@@ -840,6 +840,7 @@
       patchMediaFileWithDetectionSeiRecords,
       readDetectionSeiPayloadFromFrame,
       detectionSeiPayloadToCanvasDetections,
+      normalizeDetectionSeiProcessOptions,
     } from "../lib/browser/index.js";
     import { VideoSegmentPlayer } from "../lib/player/index.js";
 
@@ -2001,15 +2002,15 @@
       await detectObjectsOnCanvasFrame({ updateStatus: true });
     }
     function readDetectionSeiSettings() {
-      return {
-        confidenceThreshold: Math.max(0.01, Math.min(0.99, Number(detectionSeiConfidenceEl?.value) || Number(detectorScoreEl?.value) || 0.35)),
-        iouThreshold: Math.max(0.05, Math.min(0.95, Number(detectionSeiIouEl?.value) || 0.45)),
-        frameStride: Math.max(1, Math.min(120, Math.round(Number(detectionSeiStrideEl?.value) || 1))),
+      return normalizeDetectionSeiProcessOptions({
+        confidenceThreshold: Number(detectionSeiConfidenceEl?.value) || Number(detectorScoreEl?.value) || 0.35,
+        iouThreshold: Number(detectionSeiIouEl?.value) || 0.45,
+        frameStride: Number(detectionSeiStrideEl?.value) || 1,
         replaceExisting: detectionSeiReplaceEl?.checked !== false,
         fallbackRunDetection: detectionSeiFallbackEl?.checked === true,
         writeEmptyDetections: detectionSeiWriteEmptyEl?.checked === true,
-        maxDetectionsPerFrame: Math.max(1, Math.min(100, Math.round(Number(detectorMaxEl?.value) || 20))),
-      };
+        maxDetectionsPerFrame: Number(detectorMaxEl?.value) || 20,
+      });
     }
     function setDetectionSeiBusy(isBusy) {
       if (generateDetectionSeiBtn) generateDetectionSeiBtn.disabled = isBusy;
