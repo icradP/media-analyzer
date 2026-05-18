@@ -63,51 +63,57 @@
     }
     .nle-title { font-size: 14px; color: var(--accent); margin: 0; }
     .transport-time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-    .monitor-main {
+    .nle-monitor {
+      min-height: 0;
+      overflow: hidden;
+    }
+    .monitor-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.62fr) minmax(320px, 1fr);
-      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 360px) 420px;
+      gap: 12px;
+      height: clamp(480px, 64vh, 720px);
+      min-height: 0;
+      min-width: 0;
       align-items: stretch;
     }
-    .monitor-ai-stack {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-height: 0;
-    }
-    .monitor-sei-card,
-    .monitor-detector-card {
+    .decoded-frame-panel,
+    .selected-frame-panel,
+    .collapsible-panel {
       border: 1px solid var(--border);
       border-radius: 8px;
       background: #101726;
       padding: 8px;
-      min-height: 120px;
-      overflow: auto;
-    }
-    .monitor-sei-card .title,
-    .monitor-detector-card .title { margin-bottom: 6px; }
-    .monitor-side {
-      display: grid;
-      grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
-      gap: 8px;
       min-height: 0;
-      align-items: stretch;
+      min-width: 0;
     }
-    .monitor-info-card {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #101726;
-      padding: 8px;
-      min-height: 120px;
+    .decoded-frame-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+      contain: layout paint size;
+    }
+    .decoded-frame-panel .title,
+    .selected-frame-panel .title { margin-bottom: 6px; }
+    .selected-frame-panel {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      overflow: hidden;
+      contain: layout paint size;
+    }
+    .selected-frame-panel .kv {
+      max-height: 180px;
+      overflow: auto;
+      min-height: 0;
+    }
+    .selected-frame-panel .tree-wrap {
+      max-height: none;
+      min-height: 0;
       overflow: auto;
     }
-    .monitor-info-card .title { margin-bottom: 6px; }
-    .monitor-info-card .tree-wrap { max-height: min(34vh, 300px); }
-    .monitor-info-card .hex-wrap { max-height: min(48vh, 600px); }
-    .video-preview-shell {
+    .decoded-frame-container {
       width: 100%;
-      max-height: min(52vh, 540px);
-      min-height: 120px;
+      height: 100%;
+      min-height: 360px;
       background: #000;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -116,14 +122,59 @@
       justify-content: center;
       overflow: hidden;
       aspect-ratio: 16 / 9;
+      contain: layout paint size;
     }
-    .video-preview-shell canvas {
+    .decoded-frame-canvas {
       display: block;
       width: 100%;
       height: 100%;
       object-fit: contain;
       background: #000;
     }
+    .debug-column {
+      min-height: 0;
+      min-width: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overscroll-behavior: contain;
+    }
+    .collapsible-panel {
+      flex: 0 0 auto;
+      padding: 0;
+      overflow: hidden;
+    }
+    .collapsible-panel > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 9px 10px;
+      color: var(--accent);
+      font-size: 14px;
+      user-select: none;
+      border-bottom: 1px solid transparent;
+    }
+    .collapsible-panel > summary::-webkit-details-marker { display: none; }
+    .collapsible-panel > summary::before {
+      content: "▸";
+      display: inline-block;
+      width: 16px;
+      color: var(--muted);
+    }
+    .collapsible-panel[open] > summary {
+      border-bottom-color: var(--border);
+    }
+    .collapsible-panel[open] > summary::before {
+      content: "▾";
+    }
+    .collapsible-panel-content {
+      max-height: 320px;
+      overflow: auto;
+      min-height: 0;
+      padding: 8px;
+    }
+    .collapsible-panel-content .tree-wrap { max-height: 220px; }
+    .collapsible-panel-content .sei-text { min-height: 96px; resize: vertical; }
     .transport {
       display: flex;
       flex-wrap: wrap;
@@ -270,6 +321,7 @@
       gap: 8px;
     }
     .hex-wrap { overflow: auto; max-height: 44vh; border: 1px solid var(--border); border-radius: 8px; }
+    .collapsible-panel-content > .hex-wrap { max-height: 288px; }
     .hex-row { display: grid; grid-template-columns: 90px 1fr 220px; gap: 8px; padding: 2px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
     .hex-row:nth-child(odd) { background: rgba(255,255,255,0.02); }
     .hex-off { color: var(--muted); }
@@ -454,10 +506,50 @@
       color: var(--muted);
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
+    .detection-sei-panel {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .detection-sei-panel .subtitle {
+      margin: 0 0 6px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .detection-sei-progress {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 6px;
+    }
+    .detection-sei-progress progress {
+      width: 100%;
+      height: 12px;
+      accent-color: #5da8ff;
+    }
+    .detection-sei-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
     @media (max-width: 1100px) {
       .right-grid { grid-template-columns: 1fr; }
-      .monitor-main { grid-template-columns: 1fr; }
-      .monitor-side { grid-template-columns: 1fr; }
+      .monitor-layout {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      .decoded-frame-panel {
+        height: min(56vh, 520px);
+      }
+      .selected-frame-panel {
+        height: 220px;
+      }
+      .debug-column {
+        max-height: 620px;
+      }
     }
   </style>
 </head>
@@ -474,7 +566,8 @@
         <input id="urlFetchDuration" type="number" min="1" max="600" step="1" value="10" title="仅 ws/wss/rtmp 拉流采集使用；http(s) 会直接读取完整响应" />
       </span>
       <button id="analyzeUrl">Analyze URL</button>
-      <button id="saveCapture" disabled>Save File</button>
+      <button id="saveCapture" disabled title="Chrome/Edge 下弹出系统另存为；Firefox/Safari 或非 HTTPS 时回退为浏览器下载">Save File</button>
+      <button id="detectAndSaveVideo" class="btn-primary" disabled title="对视频逐帧检测，将定位信息写入 H.264 SEI 并另存为">检测并保存视频</button>
       <button id="decodeVideo">Decode Video Frame</button>
       <button id="playAudio">Play Audio Frame</button>
       <button id="clear">Clear</button>
@@ -501,68 +594,115 @@
           <h2 class="nle-title">节目监视器</h2>
           <span id="transportTime" class="transport-time muted">播放头 — | 入 — — 出 —</span>
         </div>
-        <div class="monitor-main">
-          <div id="videoPreviewShell" class="video-preview-shell">
-            <canvas id="videoCanvas"></canvas>
-          </div>
-          <div class="monitor-ai-stack">
-            <section class="monitor-detector-card">
-              <h2 class="title">Object Detection (ONNX WebGPU)</h2>
-              <div class="detector-tools">
-                <button id="detectObjects" class="btn-primary">Detect Selected Frame</button>
-                <label for="detectorProvider">EP</label>
-                <select id="detectorProvider">
-                  <option value="auto">auto</option>
-                  <option value="webgpu">webgpu</option>
-                  <option value="wasm">wasm</option>
-                </select>
+        <div class="monitor-layout">
+          <section class="decoded-frame-panel">
+            <h2 class="title">Decoded Frame</h2>
+            <div id="videoPreviewShell" class="decoded-frame-container">
+              <canvas id="videoCanvas" class="decoded-frame-canvas"></canvas>
+            </div>
+          </section>
+          <section class="selected-frame-panel">
+            <h2 class="title">Selected Frame</h2>
+            <div id="selectedInfo" class="kv"></div>
+            <div id="selectedTree" class="tree-wrap"><div class="field-empty">No details.</div></div>
+          </section>
+          <aside class="debug-column">
+            <details class="collapsible-panel monitor-detector-card" open>
+              <summary>Object Detection (ONNX WebGPU)</summary>
+              <div class="collapsible-panel-content">
+                <div class="detector-tools">
+                  <button id="detectObjects" class="btn-primary">Detect Selected Frame</button>
+                  <label for="detectorProvider">EP</label>
+                  <select id="detectorProvider">
+                    <option value="auto">auto</option>
+                    <option value="webgpu">webgpu</option>
+                    <option value="wasm">wasm</option>
+                  </select>
+                </div>
+                <div class="detector-row">
+                  <label for="detectorModelPreset">model</label>
+                  <select id="detectorModelPreset">
+                    <option value="local" selected>本地 model.onnx</option>
+                    <option value="remote">远程 HuggingFace</option>
+                  </select>
+                  <label for="detectorScore">score</label>
+                  <input id="detectorScore" type="number" min="0.05" max="0.95" step="0.05" value="0.35" />
+                  <label for="detectorMax">max</label>
+                  <input id="detectorMax" type="number" min="1" max="100" step="1" value="20" />
+                </div>
+                <div class="detector-row">
+                  <label><input id="useMotionRoi" type="checkbox" checked /> Motion ROI</label>
+                  <label><input id="useMotionWorker" type="checkbox" checked /> Worker</label>
+                  <label for="motionDebugMode">debug</label>
+                  <select id="motionDebugMode">
+                    <option value="roi">ROI</option>
+                    <option value="mask-roi">Mask + ROI</option>
+                    <option value="off">off</option>
+                  </select>
+                  <label for="yoloEvery">roi / N</label>
+                  <input id="yoloEvery" type="number" min="1" max="30" step="1" value="1" />
+                  <label for="fullFrameEvery">full / N</label>
+                  <input id="fullFrameEvery" type="number" min="5" max="120" step="1" value="15" />
+                </div>
+                <input id="detectorModelUrl" class="detector-model" type="url" />
+                <div id="detectorMeta" class="detector-meta">Ready.</div>
+                <div id="detectorList" class="detector-list"><div class="muted">No detections.</div></div>
+                <div class="detection-sei-panel">
+                  <div class="subtitle">Detection SEI</div>
+                  <div class="muted">Run object detection for frames and embed detection results into H264 SEI metadata.</div>
+                  <div class="detector-row">
+                    <label for="detectionSeiConfidence">conf</label>
+                    <input id="detectionSeiConfidence" type="number" min="0.05" max="0.95" step="0.05" value="0.35" />
+                    <label for="detectionSeiIou">iou</label>
+                    <input id="detectionSeiIou" type="number" min="0.1" max="0.9" step="0.05" value="0.45" />
+                    <label for="detectionSeiStride">stride</label>
+                    <input id="detectionSeiStride" type="number" min="1" max="120" step="1" value="1" />
+                  </div>
+                  <div class="detector-row">
+                    <label><input id="detectionSeiReplace" type="checkbox" checked /> Replace existing</label>
+                    <label><input id="detectionSeiFallback" type="checkbox" /> Fallback live detection</label>
+                    <label><input id="detectionSeiWriteEmpty" type="checkbox" /> Write empty SEI</label>
+                  </div>
+                  <div class="detection-sei-actions">
+                    <button id="generateDetectionSei" class="btn-primary">Generate Detection SEI</button>
+                    <button id="cancelDetectionSei" disabled>Cancel</button>
+                    <button id="exportDetectionSei" disabled>Export Processed Video</button>
+                  </div>
+                  <div class="detection-sei-progress">
+                    <progress id="detectionSeiProgress" value="0" max="100"></progress>
+                    <span id="detectionSeiProgressText" class="muted">Idle.</span>
+                  </div>
+                </div>
               </div>
-              <div class="detector-row">
-                <label for="detectorModelPreset">model</label>
-                <select id="detectorModelPreset">
-                  <option value="local" selected>本地 model.onnx</option>
-                  <option value="remote">远程 HuggingFace</option>
-                </select>
-                <label for="detectorScore">score</label>
-                <input id="detectorScore" type="number" min="0.05" max="0.95" step="0.05" value="0.35" />
-                <label for="detectorMax">max</label>
-                <input id="detectorMax" type="number" min="1" max="100" step="1" value="20" />
+            </details>
+            <details class="collapsible-panel monitor-sei-card">
+              <summary>SEI Editor (H264)</summary>
+              <div class="collapsible-panel-content">
+                <div class="sei-tools">
+                  <button id="extractSei">Extract SEI From Selected</button>
+                  <button id="applySei">Apply / Insert SEI</button>
+                </div>
+                <div id="seiMeta" class="sei-meta">No SEI extracted.</div>
+                <div id="seiFields" class="sei-fields"><div class="sei-field-k">state</div><div class="sei-field-v">-</div></div>
+                <div class="sei-tools-mini">
+                  <label for="seiPayloadType">SEI Type</label>
+                  <select id="seiPayloadType"></select>
+                </div>
+                <textarea id="seiText" class="sei-text" placeholder="Editable payload hex bytes only. NAL header, payloadType, payloadSize, UUID/prefix fields and trailing bits are generated automatically."></textarea>
+                <div class="sei-tools-mini">
+                  <button id="seiHexToAscii">Hex -> ASCII</button>
+                  <button id="seiAsciiToHex">ASCII -> Hex</button>
+                </div>
+                <textarea id="seiAsciiText" class="sei-text" placeholder="Payload ASCII view/editor (currently ASCII only)."></textarea>
               </div>
-              <input id="detectorModelUrl" class="detector-model" type="url" />
-              <div id="detectorMeta" class="detector-meta">Ready.</div>
-              <div id="detectorList" class="detector-list"><div class="muted">No detections.</div></div>
-            </section>
-            <section class="monitor-sei-card">
-              <h2 class="title">SEI Editor (H264)</h2>
-              <div class="sei-tools">
-                <button id="extractSei">Extract SEI From Selected</button>
-                <button id="applySei">Apply / Insert SEI</button>
+            </details>
+            <details class="collapsible-panel monitor-hex-card">
+              <summary>HexDataView</summary>
+              <div class="collapsible-panel-content">
+                <div id="hexWrap" class="hex-wrap"></div>
               </div>
-              <div id="seiMeta" class="sei-meta">No SEI extracted.</div>
-              <div id="seiFields" class="sei-fields"><div class="sei-field-k">state</div><div class="sei-field-v">-</div></div>
-              <div class="sei-tools-mini">
-                <label for="seiPayloadType">SEI Type</label>
-                <select id="seiPayloadType"></select>
-              </div>
-              <textarea id="seiText" class="sei-text" placeholder="Editable payload hex bytes only. NAL header, payloadType, payloadSize, UUID/prefix fields and trailing bits are generated automatically."></textarea>
-              <div class="sei-tools-mini">
-                <button id="seiHexToAscii">Hex -> ASCII</button>
-                <button id="seiAsciiToHex">ASCII -> Hex</button>
-              </div>
-              <textarea id="seiAsciiText" class="sei-text" placeholder="Payload ASCII view/editor (currently ASCII only)."></textarea>
-            </section>
-          </div>
-          <div class="monitor-side">
-            <section class="monitor-info-card">
-              <h2 class="title">Selected Frame</h2>
-              <div id="selectedInfo" class="kv"></div>
-              <div id="selectedTree" class="tree-wrap"><div class="field-empty">No details.</div></div>
-            </section>
-            <section class="monitor-info-card">
-              <h2 class="title">HexDataView</h2>
-              <div id="hexWrap" class="hex-wrap"></div>
-            </section>
-          </div>
+            </details>
+          </aside>
         </div>
         <div class="transport">
           <button id="playSegVideo" class="btn-primary">播放视频选区</button>
@@ -657,6 +797,9 @@
       buildCapturedMediaFileName,
       collectWebSocketBinary,
       downloadBytesAsFile,
+      saveBytesAsFile,
+      canUseSaveFilePicker,
+      pickSaveFileLocation,
     } from "../lib/streaming/wsStreamCapture.js";
     import { openRtmpThroughSidecar } from "../lib/streaming/rtmpSidecarBridge.js";
     import {
@@ -687,6 +830,16 @@
       createObjectDetector,
       createObjectDetectionStabilizer,
       drawObjectDetections,
+      createMotionRoiDetector,
+      createMotionRoiWorkerClient,
+      mapSourceRoisToCanvasRois,
+      drawMotionDebugOverlay,
+      createDetectionScheduler,
+      buildDetectionSeiRecord,
+      buildDetectionSeiPayloadForFrame,
+      patchMediaFileWithDetectionSeiRecords,
+      readDetectionSeiPayloadFromFrame,
+      detectionSeiPayloadToCanvasDetections,
     } from "../lib/browser/index.js";
     import { VideoSegmentPlayer } from "../lib/player/index.js";
 
@@ -696,6 +849,7 @@
     const urlFetchDurationEl = document.getElementById("urlFetchDuration");
     const analyzeUrlBtn = document.getElementById("analyzeUrl");
     const saveCaptureBtn = document.getElementById("saveCapture");
+    const detectAndSaveVideoBtn = document.getElementById("detectAndSaveVideo");
     const decodeVideoBtn = document.getElementById("decodeVideo");
     const playAudioBtn = document.getElementById("playAudio");
     const segStartEl = document.getElementById("segStart");
@@ -737,8 +891,24 @@
     const detectorMaxEl = document.getElementById("detectorMax");
     const detectorModelPresetEl = document.getElementById("detectorModelPreset");
     const detectorModelUrlEl = document.getElementById("detectorModelUrl");
+    const useMotionRoiEl = document.getElementById("useMotionRoi");
+    const useMotionWorkerEl = document.getElementById("useMotionWorker");
+    const motionDebugModeEl = document.getElementById("motionDebugMode");
+    const yoloEveryEl = document.getElementById("yoloEvery");
+    const fullFrameEveryEl = document.getElementById("fullFrameEvery");
     const detectorMetaEl = document.getElementById("detectorMeta");
     const detectorListEl = document.getElementById("detectorList");
+    const generateDetectionSeiBtn = document.getElementById("generateDetectionSei");
+    const cancelDetectionSeiBtn = document.getElementById("cancelDetectionSei");
+    const exportDetectionSeiBtn = document.getElementById("exportDetectionSei");
+    const detectionSeiConfidenceEl = document.getElementById("detectionSeiConfidence");
+    const detectionSeiIouEl = document.getElementById("detectionSeiIou");
+    const detectionSeiStrideEl = document.getElementById("detectionSeiStride");
+    const detectionSeiReplaceEl = document.getElementById("detectionSeiReplace");
+    const detectionSeiFallbackEl = document.getElementById("detectionSeiFallback");
+    const detectionSeiWriteEmptyEl = document.getElementById("detectionSeiWriteEmpty");
+    const detectionSeiProgressEl = document.getElementById("detectionSeiProgress");
+    const detectionSeiProgressTextEl = document.getElementById("detectionSeiProgressText");
     const copyFailureBtn = document.getElementById("copyFailure");
     const clearFailureBtn = document.getElementById("clearFailure");
     const canvasEl = document.getElementById("videoCanvas");
@@ -786,13 +956,31 @@
     let objectDetectionStabilizer = createObjectDetectionStabilizer({
       jitterThresholdPx: 8,
       smoothAlpha: 0.62,
-      maxMissed: 3,
-      resetFrameGap: 8,
+      maxMissed: 90,
+      resetFrameGap: 120,
+      trackTtlMs: 2500,
     });
     let decodedCanvasFrameIndex = null;
     let objectDetectionBaseFrameIndex = null;
     let objectDetectionBaseImageData = null;
     let segmentAutoDetectQueue = Promise.resolve();
+    let segmentAutoDetectBusy = false;
+    let segmentAutoDetectPending = null;
+    let motionRoiDetector = null;
+    let motionRoiWorker = null;
+    let motionWorkerFailed = false;
+    let lastMotionResult = null;
+    let detectionSeiAbortController = null;
+    let processedDetectionSeiBytes = null;
+    let processedDetectionSeiMime = "";
+    let processedDetectionSeiName = "";
+    let detectionScheduler = createDetectionScheduler({
+      fullFrameInterval: 15,
+      roiFrameInterval: 1,
+      trackTTL: 2,
+      minMotionArea: 96,
+      maxRoiCount: 4,
+    });
 
     const FRAME_ROW_H = 28;
     const FRAME_HEADER_H = 30;
@@ -814,13 +1002,45 @@
       detectorModelUrlEl.value = detectorModelUrlForPreset(detectorModelPresetEl.value);
     }
     syncDetectorModelUrlFromPreset();
-    detectorModelPresetEl?.addEventListener("change", syncDetectorModelUrlFromPreset);
+    detectorModelPresetEl?.addEventListener("change", () => {
+      syncDetectorModelUrlFromPreset();
+      objectDetectionStabilizer.reset();
+    });
+    detectorModelUrlEl?.addEventListener("change", () => objectDetectionStabilizer.reset());
+    detectorProviderEl?.addEventListener("change", () => objectDetectionStabilizer.reset());
+    useMotionRoiEl?.addEventListener("change", resetMotionRoiState);
+    useMotionWorkerEl?.addEventListener("change", resetMotionRoiState);
+    motionDebugModeEl?.addEventListener("change", resetMotionRoiState);
+    yoloEveryEl?.addEventListener("change", resetMotionRoiState);
+    fullFrameEveryEl?.addEventListener("change", resetMotionRoiState);
 
     function setStatus(text) { statusEl.textContent = text; }
     function clearDecodedCanvasState() {
       decodedCanvasFrameIndex = null;
       objectDetectionBaseFrameIndex = null;
       objectDetectionBaseImageData = null;
+    }
+    function resetMotionRoiState() {
+      lastMotionResult = null;
+      motionRoiDetector?.reset?.();
+      motionRoiWorker?.reset?.();
+      detectionScheduler?.reset?.();
+      objectDetectionStabilizer.reset();
+    }
+    function resetDetectionSeiExportState() {
+      processedDetectionSeiBytes = null;
+      processedDetectionSeiMime = "";
+      processedDetectionSeiName = "";
+      if (exportDetectionSeiBtn) exportDetectionSeiBtn.disabled = true;
+      if (detectionSeiProgressEl) detectionSeiProgressEl.value = 0;
+      if (detectionSeiProgressTextEl) detectionSeiProgressTextEl.textContent = "Idle.";
+    }
+    function closeAutoDetectJob(job) {
+      try {
+        job?.videoFrame?.close?.();
+      } catch {
+        // ignore close errors
+      }
     }
     function markCanvasDecodedFrame(frameIndex) {
       const idx = Number(frameIndex);
@@ -1038,10 +1258,12 @@
       renderFrames();
       const sf = selectedFrame();
       renderSelectedInfo(sf);
-      renderHex(sf);
-      renderSelectedTree(sf);
-      refreshSeiEditorForSelection();
-      clearObjectDetection("Ready.");
+      if (opts.details !== false) {
+        renderHex(sf);
+        renderSelectedTree(sf);
+        refreshSeiEditorForSelection();
+        clearObjectDetection("Ready.");
+      }
       if (opts.scroll !== false) scrollFrameRowIntoView(shownIdx);
     }
     function frameOffsetValue(f) {
@@ -1426,7 +1648,12 @@
       const provider = detectorProviderEl?.value || "auto";
       const scoreThreshold = Math.max(0.01, Math.min(0.99, Number(detectorScoreEl?.value) || 0.35));
       const maxDetections = Math.max(1, Math.min(100, Math.round(Number(detectorMaxEl?.value) || 20)));
-      return { modelUrl, provider, scoreThreshold, maxDetections };
+      const useMotionRoi = useMotionRoiEl?.checked !== false;
+      const useMotionWorker = useMotionWorkerEl?.checked !== false;
+      const motionDebugMode = motionDebugModeEl?.value || "roi";
+      const roiFrameInterval = Math.max(1, Math.min(30, Math.round(Number(yoloEveryEl?.value) || 1)));
+      const fullFrameInterval = Math.max(5, Math.min(120, Math.round(Number(fullFrameEveryEl?.value) || 15)));
+      return { modelUrl, provider, scoreThreshold, maxDetections, useMotionRoi, useMotionWorker, motionDebugMode, roiFrameInterval, fullFrameInterval };
     }
     async function ensureObjectDetectorForSettings(settings) {
       const key = `${settings.modelUrl}|${settings.provider}`;
@@ -1446,6 +1673,7 @@
       await objectDetector.init();
       objectDetectorKey = key;
       objectDetectionStabilizer.reset();
+      detectionScheduler.reset();
       return { detector: objectDetector, initMs: performance.now() - start, reused: false };
     }
     function clearObjectDetection(note = "No detections.") {
@@ -1458,46 +1686,192 @@
         const initText = Number(out?.initMs || 0) > 0 ? `, init=${Number(out.initMs).toFixed(1)}ms` : "";
         const totalText = Number(out?.totalMs || 0) > 0 ? `, total=${Number(out.totalMs).toFixed(1)}ms` : "";
         const rawCount = Array.isArray(out?.rawDetections) ? out.rawDetections.length : detections.length;
-        detectorMetaEl.textContent = `provider=${out?.provider || "-"}, model=${out?.modelInputSize || "-"}px, detections=${detections.length}/${rawCount}, run=${Number(out?.inferenceMs || 0).toFixed(1)}ms${initText}${totalText}`;
+        const roiTotalText = Number.isFinite(Number(out?.motionRoiCount)) ? `/${out.motionRoiCount}` : "";
+        const roiText = Number.isFinite(Number(out?.roiCount)) ? `, roi=${out.roiCount}${roiTotalText}, runs=${out.roiRuns ?? 0}` : "";
+        const scheduleText = out?.schedulerMode ? `, schedule=${out.schedulerMode}${Array.isArray(out.schedulerReasons) ? `:${out.schedulerReasons.join("+")}` : ""}` : "";
+        const motionText = out?.motionSourceWidth
+          ? `, motion=${out.motionSourceWidth}x${out.motionSourceHeight}->${out.motionProcessWidth}x${out.motionProcessHeight}, changed=${out.motionChangedPixels ?? 0}`
+          : "";
+        const sourceText = out?.source ? `source=${out.source}, ` : "";
+        detectorMetaEl.textContent = `${sourceText}provider=${out?.provider || "-"}, model=${out?.modelInputSize || "-"}px, detections=${detections.length}/${rawCount}${roiText}${scheduleText}${motionText}, run=${Number(out?.inferenceMs || 0).toFixed(1)}ms${initText}${totalText}`;
       }
       if (!detectorListEl) return;
+      const roiHtml = renderMotionRoiRows(out);
       if (!detections.length) {
-        detectorListEl.innerHTML = `<div class="muted">No detections above threshold.</div>`;
+        detectorListEl.innerHTML = `${roiHtml}<div class="muted">No detections above threshold.</div>`;
         return;
       }
-      detectorListEl.innerHTML = detections.map((det) => {
+      const detectionHtml = detections.map((det) => {
         const box = `${Math.round(det.x)},${Math.round(det.y)} ${Math.round(det.width)}x${Math.round(det.height)}`;
-        return `<div class="detector-item"><span>${esc(det.label)} <span class="muted">${esc(box)}</span></span><span class="detector-score">${(det.score * 100).toFixed(1)}%</span></div>`;
+        const track = det.trackId ? ` #${det.trackId} miss=${det.missCount || 0}` : "";
+        return `<div class="detector-item"><span>${esc(det.label)} <span class="muted">${esc(box)}${esc(track)}</span></span><span class="detector-score">${(det.score * 100).toFixed(1)}%</span></div>`;
       }).join("");
+      detectorListEl.innerHTML = `${roiHtml}${detectionHtml}`;
+    }
+    function renderMotionRoiRows(out) {
+      if (!Number.isFinite(Number(out?.roiCount))) return "";
+      const sourceRois = Array.isArray(out?.motionRois) ? out.motionRois : [];
+      const motionCanvasRois = Array.isArray(out?.motionCanvasRois) ? out.motionCanvasRois : [];
+      const candidateRois = Array.isArray(out?.candidateRois) ? out.candidateRois : [];
+      const header = `<div class="muted">Motion ROI mapping: source ${Math.round(out.motionSourceWidth || 0)}x${Math.round(out.motionSourceHeight || 0)} -> canvas ${Math.round(out.canvasWidth || 0)}x${Math.round(out.canvasHeight || 0)}</div>`;
+      const motionRows = sourceRois.slice(0, 8).map((src, i) => {
+        const c = motionCanvasRois[i] || {};
+        const srcBox = `${Math.round(src.x)},${Math.round(src.y)} ${Math.round(src.width)}x${Math.round(src.height)}`;
+        const canvasBox = `${Math.round(c.x || 0)},${Math.round(c.y || 0)} ${Math.round(c.width || 0)}x${Math.round(c.height || 0)}`;
+        const score = Number(src.motionScore || 0).toFixed(3);
+        return `<div class="detector-item"><span>Motion ${i + 1} <span class="muted">src ${esc(srcBox)} -> canvas ${esc(canvasBox)}</span></span><span class="detector-score">${esc(score)}</span></div>`;
+      }).join("");
+      const candidateRows = candidateRois.slice(0, 12).map((roi, i) => {
+        const canvasBox = `${Math.round(roi.x || 0)},${Math.round(roi.y || 0)} ${Math.round(roi.width || 0)}x${Math.round(roi.height || 0)}`;
+        const sources = Array.isArray(roi.sources) ? roi.sources.join("+") : (roi.source || "roi");
+        return `<div class="detector-item"><span>Candidate ${i + 1} <span class="muted">canvas ${esc(canvasBox)} ${esc(sources)}</span></span><span class="detector-score">${esc(roi.trackId ?? "")}</span></div>`;
+      }).join("");
+      const motionEmpty = sourceRois.length ? "" : `<div class="muted">Motion ROI: 0${out?.motionFallbackReason ? ` (${esc(out.motionFallbackReason)})` : ""}. Using track ROI / periodic full-frame fallback.</div>`;
+      const motionExtra = sourceRois.length > 8 ? `<div class="muted">+${sourceRois.length - 8} motion ROI hidden</div>` : "";
+      const candidateEmpty = candidateRois.length ? "" : `<div class="muted">Candidate ROI: 0. Scheduler mode=${esc(out?.schedulerMode || "-")}.</div>`;
+      const candidateExtra = candidateRois.length > 12 ? `<div class="muted">+${candidateRois.length - 12} candidate ROI hidden</div>` : "";
+      return `${header}${motionEmpty}${motionRows}${motionExtra}<div class="muted">Detection candidates (${esc(out?.schedulerMode || "-")}):</div>${candidateRows}${candidateEmpty}${candidateExtra}`;
+    }
+    function ensureMotionRoiDetector() {
+      if (!motionRoiDetector) {
+        motionRoiDetector = createMotionRoiDetector({
+          maxProcessWidth: 320,
+          threshold: 24,
+          minArea: 18,
+          mergeDistance: 18,
+          roiPadding: 24,
+        });
+      }
+      return motionRoiDetector;
+    }
+    function ensureMotionRoiWorker() {
+      if (motionWorkerFailed) return null;
+      if (motionRoiWorker) return motionRoiWorker;
+      try {
+        motionRoiWorker = createMotionRoiWorkerClient({
+          maxProcessWidth: 320,
+          threshold: 24,
+          minArea: 18,
+          mergeDistance: 18,
+          roiPadding: 24,
+        });
+        return motionRoiWorker;
+      } catch (err) {
+        motionWorkerFailed = true;
+        console.warn("motion-worker-unavailable", err);
+        return null;
+      }
+    }
+    async function processMotionForVideoFrame(videoFrame, frameIndex, settings) {
+      if (!settings.useMotionRoi) return null;
+      const returnMask = settings.motionDebugMode === "mask-roi";
+      const canvasFallback = (reason) => {
+        const detector = ensureMotionRoiDetector();
+        const result = detector.processCanvas(canvasEl, { frameIndex, returnMask });
+        result.fallbackReason = reason;
+        return result;
+      };
+      if (videoFrame && settings.useMotionWorker) {
+        const worker = ensureMotionRoiWorker();
+        if (worker) {
+          try {
+            return await worker.processVideoFrame(videoFrame, { frameIndex, returnMask });
+          } catch (err) {
+            motionWorkerFailed = true;
+            try {
+              videoFrame.close?.();
+            } catch {
+              // ignore close errors
+            }
+            console.warn("motion-worker-fallback", err);
+            return canvasFallback("worker-fallback");
+          }
+        }
+      }
+      const detector = ensureMotionRoiDetector();
+      if (!videoFrame) {
+        return detector.processCanvas(canvasEl, { frameIndex, returnMask });
+      }
+      try {
+        const result = await detector.processVideoFrame(videoFrame, { frameIndex, returnMask });
+        try {
+          videoFrame.close?.();
+        } catch {
+          // ignore close errors
+        }
+        return result;
+      } catch (err) {
+        try {
+          videoFrame.close?.();
+        } catch {
+          // ignore close errors
+        }
+        console.warn("motion-roi-failed", err);
+        return canvasFallback("video-frame-fallback");
+      }
+    }
+    function syncDetectionSchedulerSettings(settings) {
+      detectionScheduler.fullFrameInterval = settings.fullFrameInterval;
+      detectionScheduler.roiFrameInterval = settings.roiFrameInterval;
+      detectionScheduler.maxRoiCount = 4;
     }
     function isSegmentPlayActive(token) {
       return token === segmentPlayToken;
     }
-    function enqueueSegmentAutoDetect(frameIndex, token) {
-      if (!detectOnSegmentPlayEl?.checked || !isSegmentPlayActive(token)) return;
-      segmentAutoDetectQueue = segmentAutoDetectQueue
-        .then(() => detectObjectsOnCanvasFrame({
-          frameIndex,
-          segmentToken: token,
-          updateStatus: false,
-        }))
-        .catch((err) => {
-          console.warn("segment-auto-detect", err);
-        });
+    function enqueueSegmentAutoDetect(frameIndex, token, videoFrame = null) {
+      if (!detectOnSegmentPlayEl?.checked || !isSegmentPlayActive(token)) {
+        closeAutoDetectJob({ videoFrame });
+        return;
+      }
+      const job = { frameIndex, segmentToken: token, updateStatus: false, videoFrame };
+      if (segmentAutoDetectBusy) {
+        closeAutoDetectJob(segmentAutoDetectPending);
+        segmentAutoDetectPending = job;
+        return;
+      }
+      segmentAutoDetectPending = job;
+      segmentAutoDetectQueue = segmentAutoDetectQueue.then(runSegmentAutoDetectLoop);
+    }
+    async function runSegmentAutoDetectLoop() {
+      if (segmentAutoDetectBusy) return;
+      segmentAutoDetectBusy = true;
+      try {
+        while (segmentAutoDetectPending) {
+          const job = segmentAutoDetectPending;
+          segmentAutoDetectPending = null;
+          if (!isSegmentPlayActive(job.segmentToken)) {
+            closeAutoDetectJob(job);
+            continue;
+          }
+          await detectObjectsOnCanvasFrame(job).catch((err) => console.warn("segment-auto-detect", err));
+        }
+      } finally {
+        segmentAutoDetectBusy = false;
+      }
     }
     async function detectObjectsOnCanvasFrame({
       frameIndex = null,
       frameWrapper = null,
       segmentToken = null,
       updateStatus = true,
+      videoFrame = null,
     } = {}) {
       const sf = frameWrapper ||
         (Number.isFinite(Number(frameIndex)) ? allFrames.find((f) => Number(f?.index) === Number(frameIndex)) : null) ||
         selectedFrame();
-      if (!sf || sf._mediaType !== "video") throw new Error("Video frame is required for object detection.");
-      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
+      if (!sf || sf._mediaType !== "video") {
+        closeAutoDetectJob({ videoFrame });
+        throw new Error("Video frame is required for object detection.");
+      }
+      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) {
+        closeAutoDetectJob({ videoFrame });
+        return null;
+      }
       const settings = readDetectorSettings();
-      if (!settings.modelUrl) throw new Error("Object detection model URL is required.");
+      if (!settings.modelUrl) {
+        closeAutoDetectJob({ videoFrame });
+        throw new Error("Object detection model URL is required.");
+      }
       const totalStart = performance.now();
       const idx = Number(sf.index);
       const ctx = canvasEl.getContext("2d");
@@ -1511,7 +1885,10 @@
         ctx.putImageData(objectDetectionBaseImageData, 0, 0);
         decodedCanvasFrameIndex = idx;
       } else if (!canvasHasFrame(sf)) {
-        if (segmentToken !== null) return null;
+        if (segmentToken !== null) {
+          closeAutoDetectJob({ videoFrame });
+          return null;
+        }
         if (detectorMetaEl) detectorMetaEl.textContent = "Decoding selected frame before detection...";
         const decoded = await runVideoFrameDecodeFlow(sf, {
           context: "object-detection",
@@ -1520,24 +1897,100 @@
         });
         if (decoded?.mode === "failed") throw new Error("Frame decode failed; object detection needs a decoded canvas frame.");
       }
-      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
-      const detectorReady = await ensureObjectDetectorForSettings(settings);
-      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
-      const detector = detectorReady.detector;
-      if (detectorMetaEl) detectorMetaEl.textContent = `Loading/running ONNX model with ${settings.provider}...`;
-      if (updateStatus) setStatus(`Running object detection on frame=${sf.index} ...`);
-      const out = await detector.detectCanvas(canvasEl, {
-        scoreThreshold: settings.scoreThreshold,
-        maxDetections: settings.maxDetections,
-      });
+      if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) {
+        closeAutoDetectJob({ videoFrame });
+        return null;
+      }
+      const motionResult = await processMotionForVideoFrame(videoFrame, idx, settings);
+      if (motionResult) lastMotionResult = motionResult;
+      if (videoFrame && !settings.useMotionRoi) closeAutoDetectJob({ videoFrame });
+      syncDetectionSchedulerSettings(settings);
+      const nowMs = performance.now();
+      const motionCanvasRois = settings.useMotionRoi && motionResult
+        ? mapSourceRoisToCanvasRois(motionResult.rois, motionResult.sourceWidth, motionResult.sourceHeight, canvasEl)
+        : [];
+      const schedulerPlan = settings.useMotionRoi
+        ? detectionScheduler.planFrame({
+          frameIndex: idx,
+          canvasWidth: canvasEl.width,
+          canvasHeight: canvasEl.height,
+          motionResult,
+          motionRois: motionCanvasRois,
+          tracks: objectDetectionStabilizer.getActiveTracks({ nowMs }),
+          forceFullFrame: segmentToken === null,
+        })
+        : {
+          mode: "full",
+          runFullFrame: true,
+          runRoi: false,
+          candidateRois: [],
+          motionRois: [],
+          trackRois: [],
+          staticRois: [],
+          reasons: ["motion-disabled"],
+          motionRatio: 0,
+          noMotionFrames: 0,
+        };
+      const detectionRan = schedulerPlan.runFullFrame || schedulerPlan.runRoi;
+      let detectorReady = { initMs: 0 };
+      let out = {
+        detections: [],
+        rawDetections: [],
+        provider: objectDetector?.activeExecutionProvider || "-",
+        modelInputSize: objectDetector?.modelInputSize || 0,
+        inferenceMs: 0,
+        roiCount: schedulerPlan.candidateRois.length,
+        roiRuns: 0,
+      };
+      if (detectionRan) {
+        detectorReady = await ensureObjectDetectorForSettings(settings);
+        if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
+        const detector = detectorReady.detector;
+        if (detectorMetaEl) detectorMetaEl.textContent = `Loading/running ONNX model with ${settings.provider}...`;
+        if (updateStatus) setStatus(`Running object detection on frame=${sf.index} ...`);
+        out = schedulerPlan.runRoi
+          ? await detector.detectCanvasRois(canvasEl, schedulerPlan.candidateRois, {
+            scoreThreshold: settings.scoreThreshold,
+            maxDetections: settings.maxDetections,
+            maxRois: detectionScheduler.maxRoiCount,
+          })
+          : await detector.detectCanvas(canvasEl, {
+            scoreThreshold: settings.scoreThreshold,
+            maxDetections: settings.maxDetections,
+          });
+      }
+      out.motionRois = settings.useMotionRoi && motionResult ? motionResult.rois || [] : [];
+      out.motionRoiCount = out.motionRois.length;
+      out.motionCanvasRois = motionCanvasRois;
+      out.candidateRois = schedulerPlan.candidateRois;
+      out.canvasRois = schedulerPlan.candidateRois;
+      out.trackRois = schedulerPlan.trackRois;
+      out.staticRois = schedulerPlan.staticRois;
+      out.schedulerMode = schedulerPlan.mode;
+      out.schedulerReasons = schedulerPlan.reasons;
+      out.schedulerMotionRatio = schedulerPlan.motionRatio;
+      out.schedulerNoMotionFrames = schedulerPlan.noMotionFrames;
+      out.canvasWidth = canvasEl.width || 0;
+      out.canvasHeight = canvasEl.height || 0;
+      out.motionSourceWidth = motionResult?.sourceWidth || 0;
+      out.motionSourceHeight = motionResult?.sourceHeight || 0;
+      out.motionProcessWidth = motionResult?.processWidth || 0;
+      out.motionProcessHeight = motionResult?.processHeight || 0;
+      out.motionChangedPixels = motionResult?.changedPixels || 0;
+      out.motionAvgDiff = motionResult?.avgDiff || 0;
+      out.motionFallbackReason = motionResult?.fallbackReason || "";
       if (segmentToken !== null && !isSegmentPlayActive(segmentToken)) return null;
       out.initMs = detectorReady.initMs;
       out.totalMs = performance.now() - totalStart;
+      out.source = detectionRan ? "Live Detection" : "Track Cache";
       out.rawDetections = out.detections;
-      out.detections = objectDetectionStabilizer.update(out.rawDetections, { frameIndex: idx });
+      out.detections = objectDetectionStabilizer.update(out.rawDetections, { frameIndex: idx, nowMs, detectionRan });
       if (ctx) {
         objectDetectionBaseImageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
         objectDetectionBaseFrameIndex = idx;
+      }
+      if (settings.useMotionRoi && motionResult && settings.motionDebugMode !== "off") {
+        drawMotionDebugOverlay(canvasEl, motionResult, { mode: settings.motionDebugMode, candidateRois: schedulerPlan.candidateRois });
       }
       drawObjectDetections(canvasEl, out.detections);
       renderObjectDetectionResult(out);
@@ -1546,6 +1999,289 @@
     }
     async function detectObjectsOnSelectedFrame() {
       await detectObjectsOnCanvasFrame({ updateStatus: true });
+    }
+    function readDetectionSeiSettings() {
+      return {
+        confidenceThreshold: Math.max(0.01, Math.min(0.99, Number(detectionSeiConfidenceEl?.value) || Number(detectorScoreEl?.value) || 0.35)),
+        iouThreshold: Math.max(0.05, Math.min(0.95, Number(detectionSeiIouEl?.value) || 0.45)),
+        frameStride: Math.max(1, Math.min(120, Math.round(Number(detectionSeiStrideEl?.value) || 1))),
+        replaceExisting: detectionSeiReplaceEl?.checked !== false,
+        fallbackRunDetection: detectionSeiFallbackEl?.checked === true,
+        writeEmptyDetections: detectionSeiWriteEmptyEl?.checked === true,
+        maxDetectionsPerFrame: Math.max(1, Math.min(100, Math.round(Number(detectorMaxEl?.value) || 20))),
+      };
+    }
+    function setDetectionSeiBusy(isBusy) {
+      if (generateDetectionSeiBtn) generateDetectionSeiBtn.disabled = isBusy;
+      if (cancelDetectionSeiBtn) cancelDetectionSeiBtn.disabled = !isBusy;
+      if (exportDetectionSeiBtn) exportDetectionSeiBtn.disabled = isBusy || !(processedDetectionSeiBytes instanceof Uint8Array);
+      if (detectAndSaveVideoBtn) {
+        detectAndSaveVideoBtn.disabled = isBusy || !saveCaptureBtn || saveCaptureBtn.disabled;
+      }
+    }
+    function setSaveButtonsEnabled(enabled) {
+      if (saveCaptureBtn) saveCaptureBtn.disabled = !enabled;
+      if (detectAndSaveVideoBtn) detectAndSaveVideoBtn.disabled = !enabled || generateDetectionSeiBtn?.disabled === true;
+    }
+    function renderDetectionSeiProgress({ currentFrame = 0, totalFrames = 0, elapsedMs = 0, note = "" } = {}) {
+      const total = Math.max(0, Math.round(Number(totalFrames) || 0));
+      const current = Math.max(0, Math.min(total, Math.round(Number(currentFrame) || 0)));
+      const percent = total > 0 ? (current / total) * 100 : 0;
+      if (detectionSeiProgressEl) detectionSeiProgressEl.value = percent;
+      const elapsed = elapsedMs > 0 ? `${(elapsedMs / 1000).toFixed(1)}s` : "0.0s";
+      const remainingMs = current > 0 && total > current ? (elapsedMs / current) * (total - current) : 0;
+      const eta = remainingMs > 0 ? `, eta=${(remainingMs / 1000).toFixed(1)}s` : "";
+      if (detectionSeiProgressTextEl) {
+        detectionSeiProgressTextEl.textContent = total > 0
+          ? `${current}/${total} ${percent.toFixed(1)}%, elapsed=${elapsed}${eta}${note ? `, ${note}` : ""}`
+          : (note || "Idle.");
+      }
+    }
+    function isDetectionSeiCandidateFrame(frameWrapper) {
+      if (!frameWrapper || frameWrapper._mediaType !== "video") return false;
+      const raw = frameWrapper._rawFrame || {};
+      const fs = raw.formatSpecific || {};
+      if (Number(fs?._avcPacketType_value) === 0 || Number(fs?._avcPacketType_value) === 2) return false;
+      if (Number(fs?._packetType_value) === 0) return false;
+      return true;
+    }
+    function processedDetectionSeiFileName() {
+      const base = currentSourceMeta?.fileName || currentDownloadName || "processed-video.bin";
+      const dot = base.lastIndexOf(".");
+      if (dot > 0) return `${base.slice(0, dot)}.detection-sei${base.slice(dot)}`;
+      return `${base}.detection-sei`;
+    }
+    async function generateDetectionSeiForVideo() {
+      if (!(currentFileBytes instanceof Uint8Array) || currentFileBytes.length <= 0) throw new Error("No source bytes loaded.");
+      if (!result) throw new Error("Analyze a video first.");
+      const frames = (allFrames || []).filter(isDetectionSeiCandidateFrame);
+      if (!frames.length) throw new Error("No H.264 video frames available for Detection SEI generation.");
+      resetDetectionSeiExportState();
+      const seiSettings = readDetectionSeiSettings();
+      const detectorSettings = {
+        ...readDetectorSettings(),
+        scoreThreshold: seiSettings.confidenceThreshold,
+        maxDetections: seiSettings.maxDetectionsPerFrame,
+        useMotionRoi: false,
+      };
+      if (!detectorSettings.modelUrl) throw new Error("Object detection model URL is required.");
+      detectionSeiAbortController = new AbortController();
+      const { signal } = detectionSeiAbortController;
+      setDetectionSeiBusy(true);
+      const targetFrames = frames.filter((_, i) => i % seiSettings.frameStride === 0);
+      const startedAt = performance.now();
+      const records = [];
+      let detectedObjects = 0;
+      let skippedFrames = 0;
+      try {
+        const ready = await ensureObjectDetectorForSettings(detectorSettings);
+        const detector = ready.detector;
+        for (let i = 0; i < targetFrames.length; i++) {
+          if (signal.aborted) throw new DOMException("Detection SEI generation cancelled.", "AbortError");
+          const fw = targetFrames[i];
+          renderDetectionSeiProgress({
+            currentFrame: i,
+            totalFrames: targetFrames.length,
+            elapsedMs: performance.now() - startedAt,
+            note: `frame=${fw.index}`,
+          });
+          setStatus(`Generate Detection SEI: decoding/detecting frame=${fw.index} (${i + 1}/${targetFrames.length})`);
+          const decoded = await runVideoFrameDecodeFlow(fw, {
+            context: "detection-sei",
+            recordFailureSnapshot: false,
+            preserveCanvas: false,
+          });
+          if (decoded?.mode === "failed") {
+            skippedFrames++;
+            await yieldToUi();
+            continue;
+          }
+          const out = await detector.detectCanvas(canvasEl, {
+            scoreThreshold: seiSettings.confidenceThreshold,
+            iouThreshold: seiSettings.iouThreshold,
+            maxDetections: seiSettings.maxDetectionsPerFrame,
+          });
+          const detections = (Array.isArray(out?.detections) ? out.detections : []).slice(0, seiSettings.maxDetectionsPerFrame);
+          detectedObjects += detections.length;
+          if (detections.length || seiSettings.writeEmptyDetections) {
+            const labels = Array.from(new Set(detections.map((det) => det.label).filter(Boolean)));
+            const payload = buildDetectionSeiPayloadForFrame({
+              frameWrapper: fw,
+              detections,
+              imageWidth: canvasEl.width || out?.sourceWidth || 1,
+              imageHeight: canvasEl.height || out?.sourceHeight || 1,
+              model: {
+                name: "yolo",
+                inputSize: out?.modelInputSize || detector.modelInputSize || 640,
+                classes: labels,
+              },
+            });
+            records.push(buildDetectionSeiRecord({ frameWrapper: fw, payload }));
+          }
+          if (detections.length) {
+            drawObjectDetections(canvasEl, detections, { sourceLabel: "Live Detection" });
+          }
+          renderDetectionSeiProgress({
+            currentFrame: i + 1,
+            totalFrames: targetFrames.length,
+            elapsedMs: performance.now() - startedAt,
+            note: `records=${records.length}`,
+          });
+          await yieldToUi();
+        }
+        if (!records.length) {
+          throw new Error("No Detection SEI records were generated. Enable Write empty SEI or lower the confidence threshold.");
+        }
+        setStatus(`Writing ${records.length} Detection SEI record(s) into H.264 bitstream...`);
+        const patched = patchMediaFileWithDetectionSeiRecords(currentFileBytes, result, records, {
+          replaceExisting: seiSettings.replaceExisting,
+        });
+        processedDetectionSeiBytes = patched.patchedBytes;
+        processedDetectionSeiMime = currentSourceMeta?.fileType || (patched.container === "mp4" ? "video/mp4" : patched.container === "flv" ? "video/x-flv" : "video/h264");
+        processedDetectionSeiName = processedDetectionSeiFileName();
+        if (exportDetectionSeiBtn) exportDetectionSeiBtn.disabled = false;
+        renderDetectionSeiProgress({
+          currentFrame: targetFrames.length,
+          totalFrames: targetFrames.length,
+          elapsedMs: performance.now() - startedAt,
+          note: `written=${patched.writtenFrames}, delta=${patched.delta >= 0 ? "+" : ""}${patched.delta}`,
+        });
+        setStatus(`Detection SEI generated: frames=${patched.writtenFrames}, detections=${detectedObjects}, skipped=${skippedFrames}, delta=${patched.delta >= 0 ? "+" : ""}${patched.delta}. Click Export Processed Video.`);
+        return {
+          bytes: processedDetectionSeiBytes,
+          name: processedDetectionSeiName,
+          mime: processedDetectionSeiMime,
+          writtenFrames: patched.writtenFrames,
+          delta: patched.delta,
+          detectedObjects,
+          skippedFrames,
+        };
+      } catch (err) {
+        if (err?.name === "AbortError") {
+          setStatus("Detection SEI generation cancelled.");
+          renderDetectionSeiProgress({
+            currentFrame: 0,
+            totalFrames: targetFrames.length,
+            elapsedMs: performance.now() - startedAt,
+            note: "cancelled",
+          });
+        } else {
+          setStatus(`Detection SEI failed: ${err?.message || String(err)}`);
+          throw err;
+        }
+      } finally {
+        detectionSeiAbortController = null;
+        setDetectionSeiBusy(false);
+      }
+    }
+    async function saveProcessedBytes(bytes, fileName, mimeType) {
+      return saveBytesAsFile(
+        bytes,
+        fileName,
+        mimeType || "application/octet-stream",
+      );
+    }
+    async function exportProcessedDetectionSeiVideo() {
+      if (!(processedDetectionSeiBytes instanceof Uint8Array)) throw new Error("Generate Detection SEI first.");
+      const out = await saveProcessedBytes(
+        processedDetectionSeiBytes,
+        processedDetectionSeiName || processedDetectionSeiFileName(),
+        processedDetectionSeiMime || "application/octet-stream",
+      );
+      setStatus(`Exported processed video: ${out.fileName} (${out.size} bytes, ${out.method || "download"}).`);
+      return out;
+    }
+    async function detectAndSaveVideoWithSei({ reloadAfterSave = true } = {}) {
+      const suggestedName = processedDetectionSeiFileName();
+      let saveHandle = null;
+      if (canUseSaveFilePicker()) {
+        try {
+          saveHandle = await pickSaveFileLocation(suggestedName);
+        } catch (err) {
+          if (err?.name === "AbortError") {
+            setStatus("检测并保存已取消。");
+            return null;
+          }
+          console.warn("pickSaveFileLocation failed", err);
+        }
+      }
+      const generated = await generateDetectionSeiForVideo();
+      if (!generated) return null;
+      if (!(generated.bytes instanceof Uint8Array)) throw new Error("Detection SEI generation did not produce output bytes.");
+      const out = await saveBytesAsFile(
+        generated.bytes,
+        generated.name || suggestedName,
+        generated.mime || "application/octet-stream",
+        { fileHandle: saveHandle, preferSavePicker: !saveHandle },
+      );
+      let status = `检测并保存完成: ${out.fileName} (${out.size} bytes, ${out.method || "download"}), SEI frames=${generated.writtenFrames}, detections=${generated.detectedObjects}.`;
+      if (reloadAfterSave) {
+        setStatus(`${status} Reloading for SEI playback...`);
+        await applyAnalyzeResult(generated.bytes, {
+          ...currentSourceMeta,
+          fileName: out.fileName,
+        });
+        status = `${status} 已重新加载，播放/解码时将优先从 SEI 绘制检测框。`;
+      }
+      setStatus(status);
+      return { save: out, generated };
+    }
+    function renderSegmentFrameDetectionOverlay(frameWrapper, token) {
+      if (!frameWrapper) return null;
+      const overlay = drawDetectionSeiOverlayForFrame(frameWrapper, { renderNone: true });
+      if (overlay) return overlay;
+      if (detectOnSegmentPlayEl?.checked) {
+        enqueueSegmentAutoDetect(Number(frameWrapper.index), token);
+      }
+      return null;
+    }
+    function yieldToUi() {
+      return new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    function getDetectionSeiOverlay(frameWrapper) {
+      const stream = getVideoStreamByIndex(frameWrapper?._rawFrame?.streamIndex);
+      const payload = readDetectionSeiPayloadFromFrame(frameWrapper, result, stream);
+      if (!payload) return null;
+      return {
+        payload,
+        detections: detectionSeiPayloadToCanvasDetections(payload, canvasEl),
+      };
+    }
+    function renderSeiOverlaySource(frameWrapper, overlay) {
+      const detections = Array.isArray(overlay?.detections) ? overlay.detections : [];
+      if (detectorMetaEl) {
+        if (overlay?.payload) {
+          detectorMetaEl.textContent = `source=SEI, frame=${overlay.payload.frameIndex}, detections=${detections.length}, timeMs=${Number(overlay.payload.timeMs || 0).toFixed(1)}`;
+        } else {
+          detectorMetaEl.textContent = `source=None, frame=${frameWrapper?.index ?? "-"}, no detection SEI`;
+        }
+      }
+      if (!detectorListEl) return;
+      if (!overlay?.payload) {
+        detectorListEl.innerHTML = `<div class="muted">No detection SEI for this frame.</div>`;
+        return;
+      }
+      if (!detections.length) {
+        detectorListEl.innerHTML = `<div class="muted">Detection SEI present: empty detections.</div>`;
+        return;
+      }
+      detectorListEl.innerHTML = detections.map((det) => {
+        const box = `${Math.round(det.x)},${Math.round(det.y)} ${Math.round(det.width)}x${Math.round(det.height)}`;
+        return `<div class="detector-item"><span>${esc(det.label)} <span class="muted">SEI ${esc(box)}</span></span><span class="detector-score">${(det.score * 100).toFixed(1)}%</span></div>`;
+      }).join("");
+    }
+    function drawDetectionSeiOverlayForFrame(frameWrapper, opts = {}) {
+      const overlay = getDetectionSeiOverlay(frameWrapper);
+      if (!overlay) {
+        if (opts.renderNone) renderSeiOverlaySource(frameWrapper, null);
+        return null;
+      }
+      drawObjectDetections(canvasEl, overlay.detections, { sourceLabel: "SEI" });
+      renderSeiOverlaySource(frameWrapper, overlay);
+      return overlay;
+    }
+    function shouldRunLiveDetectionFallback() {
+      return detectionSeiFallbackEl?.checked === true || detectOnSegmentPlayEl?.checked === true;
     }
     function getFrameTimeSec(f) {
       const rf = f?._rawFrame || {};
@@ -2135,7 +2871,10 @@
 
     function stopSegmentPlayback() {
       segmentPlayToken += 1;
+      closeAutoDetectJob(segmentAutoDetectPending);
+      segmentAutoDetectPending = null;
       segmentAutoDetectQueue = Promise.resolve();
+      resetMotionRoiState();
       if (activeVideoSegmentPlayer) {
         activeVideoSegmentPlayer.stop();
         activeVideoSegmentPlayer = null;
@@ -2639,10 +3378,16 @@
       const sf = selectedFrame();
       if (!sf) throw new Error("No selected frame.");
       if (sf._mediaType !== "video") return;
-      await runVideoFrameDecodeFlow(sf, {
+      const out = await runVideoFrameDecodeFlow(sf, {
         context: "single-frame",
         recordFailureSnapshot: true,
       });
+      if (out?.mode !== "failed") {
+        const overlay = drawDetectionSeiOverlayForFrame(sf, { renderNone: true });
+        if (!overlay && detectionSeiFallbackEl?.checked === true) {
+          await detectObjectsOnCanvasFrame({ frameWrapper: sf, updateStatus: false });
+        }
+      }
     }
     function sleepSegmentMs(ms, token) {
       const deadline = performance.now() + Math.max(0, Number(ms) || 0);
@@ -2685,7 +3430,7 @@
         if (token !== segmentPlayToken) return { stopped: true, rendered };
         playingFrameIndex = Number(fw.index);
         playheadSec = t;
-        syncPlaybackCursorByGlobalFrameIndex(playingFrameIndex, { scroll: false });
+        syncPlaybackCursorByGlobalFrameIndex(playingFrameIndex, { scroll: false, details: false });
         scheduleDrawNleTimeline();
         const out = await runVideoFrameDecodeFlow(fw, {
           context: "segment-frame-fallback",
@@ -2694,7 +3439,8 @@
         });
         if (out?.mode !== "failed") {
           rendered += 1;
-          if (detectOnSegmentPlayEl?.checked) {
+          const overlay = renderSegmentFrameDetectionOverlay(fw, token);
+          if (!overlay && detectOnSegmentPlayEl?.checked) {
             await detectObjectsOnCanvasFrame({
               frameIndex: Number(fw.index),
               frameWrapper: fw,
@@ -2726,14 +3472,23 @@
           const frameIndex = Number(item?.frameIndex);
           if (!Number.isFinite(frameIndex)) return;
           markCanvasDecodedFrame(frameIndex);
-          syncPlaybackCursorByGlobalFrameIndex(frameIndex, { scroll: false });
+          syncPlaybackCursorByGlobalFrameIndex(frameIndex, { scroll: false, details: false });
           const fw = allFrames.find((f) => Number(f?.index) === frameIndex);
           const tt = fw ? getFrameTimeSec(fw) : null;
           if (typeof tt === "number") {
             playheadSec = tt;
             scheduleDrawNleTimeline();
           }
-          enqueueSegmentAutoDetect(frameIndex, token);
+          if (fw) {
+            const overlay = renderSegmentFrameDetectionOverlay(fw, token);
+            if (!overlay && detectOnSegmentPlayEl?.checked) {
+              const motionFrame = typeof item?.frame?.clone === "function" ? item.frame.clone() : null;
+              enqueueSegmentAutoDetect(frameIndex, token, motionFrame);
+            }
+          } else if (detectOnSegmentPlayEl?.checked) {
+            const motionFrame = typeof item?.frame?.clone === "function" ? item.frame.clone() : null;
+            enqueueSegmentAutoDetect(frameIndex, token, motionFrame);
+          }
         },
         onError: (err) => {
           console.error("segment-video-player-error", err);
@@ -2819,7 +3574,8 @@
     async function applyAnalyzeResult(bytes, fileMeta) {
       currentFileBytes = bytes;
       currentSourceMeta = fileMeta || {};
-      objectDetectionStabilizer.reset();
+      resetMotionRoiState();
+      resetDetectionSeiExportState();
       clearDecodedCanvasState();
       currentDownloadName = buildCapturedMediaFileName({
         bytes,
@@ -2827,7 +3583,7 @@
         sourceUrl: currentSourceMeta.sourceUrl,
         prefix: "frame-analysis-capture",
       });
-      saveCaptureBtn.disabled = false;
+      setSaveButtonsEnabled(true);
       result = await analyzeByDetectedFormat(bytes, { fileMeta });
       const format = result?.format?.formatName || "unknown";
       resultMap = { [format]: result };
@@ -3007,17 +3763,49 @@
         setStatus(`Analyze URL failed: ${err?.message || String(err)}`);
       });
     });
-    saveCaptureBtn.addEventListener("click", () => {
+    saveCaptureBtn.addEventListener("click", async () => {
       try {
-        const out = downloadBytesAsFile(
+        const out = await saveBytesAsFile(
           currentFileBytes,
           currentDownloadName,
           currentSourceMeta?.fileType || "application/octet-stream",
         );
-        setStatus(`Saved download: ${out.fileName} (${out.size} bytes).`);
+        const via = out.method === "picker" ? "另存为" : "下载";
+        setStatus(`已保存 (${via}): ${out.fileName} (${out.size} bytes).`);
       } catch (err) {
-        setStatus(`Save failed: ${err?.message || String(err)}`);
+        if (err?.name === "AbortError") {
+          setStatus("保存已取消。");
+          return;
+        }
+        setStatus(`保存失败: ${err?.message || String(err)}`);
       }
+    });
+    detectAndSaveVideoBtn?.addEventListener("click", () => {
+      detectAndSaveVideoWithSei({ reloadAfterSave: true }).catch((err) => {
+        if (err?.name === "AbortError") {
+          setStatus("检测并保存已取消。");
+          return;
+        }
+        setStatus(`检测并保存失败: ${err?.message || String(err)}`);
+      });
+    });
+    generateDetectionSeiBtn?.addEventListener("click", () => {
+      generateDetectionSeiForVideo().catch((err) => {
+        if (err?.name === "AbortError") return;
+        setStatus(`Detection SEI failed: ${err?.message || String(err)}`);
+      });
+    });
+    cancelDetectionSeiBtn?.addEventListener("click", () => {
+      detectionSeiAbortController?.abort();
+    });
+    exportDetectionSeiBtn?.addEventListener("click", () => {
+      exportProcessedDetectionSeiVideo().catch((err) => {
+        if (err?.name === "AbortError") {
+          setStatus("Export cancelled.");
+          return;
+        }
+        setStatus(`Export failed: ${err?.message || String(err)}`);
+      });
     });
     fileEl.addEventListener("change", () => {
       if (!fileEl.files?.length) return;
@@ -3189,7 +3977,7 @@
       currentFileBytes = null;
       currentSourceMeta = null;
       currentDownloadName = "";
-      saveCaptureBtn.disabled = true;
+      setSaveButtonsEnabled(false);
       allFrames = [];
       shownFrames = [];
       frameListInfoCache = new Map();
@@ -3221,7 +4009,7 @@
       if (framesScrollEl) framesScrollEl.scrollTop = 0;
       clearPlaybackCanvas();
       playheadSec = null;
-      objectDetectionStabilizer.reset();
+      resetMotionRoiState();
       clearSeiEditor();
       clearObjectDetection("No detections.");
       applyVideoPreviewShellSizing();

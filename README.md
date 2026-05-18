@@ -5,7 +5,7 @@
 ## 当前能力
 
 - `lib/codec/`：FLV、MPEG-TS、MPEG-PS、MP4/fMP4、WAV、FLAC、Ogg Opus、MP3 的轻量分析入口，以及 H.264/H.265 NAL、SPS/PPS/VPS、SEI、slice、AAC、G.711 等解析工具。
-- `lib/browser/`：帧列表、HexDataView、字段高亮、参考帧关系、WebCodecs 解码、tinyh264 fallback、WebAudio 播放、H.264 SEI 编辑模型，以及基于 ONNX Runtime Web 的实验性视频帧目标识别。
+- `lib/browser/`：帧列表、HexDataView、字段高亮、参考帧关系、WebCodecs 解码、tinyh264 fallback、WebAudio 播放、H.264 SEI 编辑模型，以及基于 ONNX Runtime Web + Motion ROI 的实验性视频帧目标识别。
 - `lib/player/`：基于分析结果的 Canvas/MSE 播放链路，支持选区播放、时间线和直播 FLV MSE 管线。
 - `lib/streaming/`：HTTP(S) 文件读取、WebSocket 二进制采集、WS-FLV 播放、RTMP sidecar 唤起与采集桥接。
 - `tools/rtmp-sidecar/`：本地 RTMP 拉流 sidecar，不转码，负责把 RTMP audio/video/script message 重新封装为本地 WS-FLV。
@@ -50,7 +50,7 @@ tools/rtmp-sidecar/register-macos-url-scheme.sh
   - 帧列表、媒体类型过滤、文件地址/时间排序、字段树、HexDataView、统计图、单帧解码和音频播放。
   - H.264 SEI 读取：从选中视频帧提取 SEI NAL，解析 payloadType、payloadSize、UUID/prefix 和可编辑 payload。
   - FLV/H.264 SEI 编辑：支持 payload Hex/ASCII 编辑、替换已有 SEI、向 FLV AVC frame 插入 SEI，并更新 FLV `dataSize` / `PreviousTagSize` 后导出 patched 文件。
-  - ONNX Runtime Web 目标识别：对选中视频帧先解码到 canvas，再用 WebGPU/WASM 执行 ONNX object detection，并在画面上叠加检测框。
+  - ONNX Runtime Web 目标识别：支持 WebGPU/WASM、hybrid detection scheduler、周期 full-frame 兜底、requestVideoFrameCallback Motion ROI、上一轮检测框扩展 ROI、短时 tracking cache，并在画面上叠加 motion mask / candidate ROI / final detection。
   - 视频选区播放支持 WebCodecs，失败时回退到 tinyh264 worker。
 - 在线示例（player）：[player-demo.html](https://icradp.github.io/media-analyzer/examples/player-demo.html)
   - 分析驱动播放器，展示 Source / Streams / Timeline / Playback Log。
@@ -78,6 +78,9 @@ tools/rtmp-sidecar/register-macos-url-scheme.sh
 - [x] sei(h264) 读取与 payloadType 解析
 - [x] flv(h264) SEI 替换、插入和保存导出
 - [x] ws-flv / rtmp sidecar 采集后进入统一分析入口
+- [x] onnxruntime-web(webgpu/wasm) 视频帧目标识别 demo 接入
+- [x] motion-assisted YOLO：帧差 ROI、ROI 裁剪推理、IOU tracking/cache、debug overlay
+- [x] hybrid detection pipeline：motion ROI + previous detection ROI + periodic full-frame fallback
 - [ ] onnxruntime-web(webgpu/wasm) 视频帧目标识别固定样本回归
 
 ## 编译与验证
