@@ -649,7 +649,7 @@
                 <div id="detectorList" class="detector-list"><div class="muted">No detections.</div></div>
                 <div class="detection-sei-panel">
                   <div class="subtitle">Detection SEI</div>
-                  <div class="muted">Run object detection for frames and embed detection results into H264 SEI metadata.</div>
+                  <div class="muted">Run object detection for frames and embed detection results into H264 SEI metadata for FLV, MP4 or raw AnnexB.</div>
                   <div class="detector-row">
                     <label for="detectionSeiConfidence">conf</label>
                     <input id="detectionSeiConfidence" type="number" min="0.05" max="0.95" step="0.05" value="0.35" />
@@ -676,7 +676,7 @@
               </div>
             </details>
             <details class="collapsible-panel monitor-sei-card">
-              <summary>SEI Editor (H264)</summary>
+              <summary>SEI Editor (H264 / MP4 / FLV)</summary>
               <div class="collapsible-panel-content">
                 <div class="sei-tools">
                   <button id="extractSei">Extract SEI From Selected</button>
@@ -1546,8 +1546,14 @@
       const payloadType = Number.isInteger(ctx.payloadType) ? ctx.payloadType : Number(ctx.payloadTypes?.[0]);
       const typeName = H264_SEI_PAYLOAD_TYPE_NAMES?.[payloadType] || "custom";
       const rows = [
+        { name: "container", value: String(ctx.container || ctx.formatName || "-") },
         { name: "frame", value: String(ctx.frameIndex ?? "-") },
+        { name: "sample", value: ctx.sampleIndex != null ? String(ctx.sampleIndex) : "-" },
+        { name: "pts/dts", value: `${ctx.pts ?? "-"} / ${ctx.dts ?? "-"}` },
+        { name: "timeMs", value: Number.isFinite(Number(ctx.timeMs)) ? Number(ctx.timeMs).toFixed(3) : "-" },
         { name: "transport", value: String(ctx.transport || "-") },
+        { name: "naluCount", value: String(ctx.naluCount ?? "-") },
+        { name: "seiCount", value: String(ctx.seiCount ?? "-") },
         { name: "nalu_header", value: "0x06 / forbidden_zero_bit=0 / nal_unit_type=6 (SEI)" },
         { name: "nalu_offset", value: Number.isFinite(ctx.absOffset) ? `0x${ctx.absOffset.toString(16).toUpperCase()}` : "-" },
         { name: "nalu_bytes", value: String(out.seiBytes?.length ?? "-") },
@@ -1608,9 +1614,9 @@
         }
         seiTextEl.value = bytesToHex(editablePayloadBytes);
         if (seiAsciiTextEl) seiAsciiTextEl.value = bytesToAscii(editablePayloadBytes);
-        const { transport, absOffset, payloadTypes, messageCount } = out.context;
+        const { container, transport, absOffset, payloadTypes, messageCount, sampleIndex, naluCount, seiCount } = out.context;
         renderSeiFields(buildSeiFieldRows(out, payloadBytes, editablePayloadBytes));
-        seiMetaEl.textContent = `frame=${sf.index}, transport=${transport}, offset=0x${absOffset.toString(16).toUpperCase()}, naluBytes=${out.seiBytes.length}, payloadBytes=${payloadBytes.length}, editable=${editablePayloadBytes.length}, payloadTypes=${payloadTypes.join(",") || "-"}${messageCount > 1 ? `, messages=${messageCount} (editing first)` : ""}`;
+        seiMetaEl.textContent = `container=${container || "-"}, frame=${sf.index}, sample=${sampleIndex ?? "-"}, transport=${transport}, offset=0x${absOffset.toString(16).toUpperCase()}, naluCount=${naluCount ?? "-"}, seiCount=${seiCount ?? "-"}, naluBytes=${out.seiBytes.length}, payloadBytes=${payloadBytes.length}, editable=${editablePayloadBytes.length}, payloadTypes=${payloadTypes.join(",") || "-"}${messageCount > 1 ? `, messages=${messageCount} (editing first)` : ""}`;
         return true;
       } catch (err) {
         clearSeiEditor(err?.message || "SEI extract failed.");
