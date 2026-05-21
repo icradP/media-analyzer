@@ -804,6 +804,7 @@
               <div class="collapsible-panel-content">
                 <div class="subtitle-panel">
                   <div class="muted">Local ASR: extract AAC audio, decode PCM 16kHz mono, run Whisper in browser worker, export WebVTT/SRT.</div>
+                  <div class="muted">Energy VAD: 基于音量能量的有效声源检测，用于粗略切片。</div>
                   <div class="subtitle-row">
                     <label for="asrModelPreset">model</label>
                     <select id="asrModelPreset">
@@ -831,6 +832,24 @@
                     <input id="asrChunkSec" type="number" min="5" max="120" step="5" value="30" />
                   </div>
                   <div class="subtitle-row">
+                    <label><input id="asrUseVad" type="checkbox" checked /> Energy VAD</label>
+                    <label for="vadFrameMs">frame</label>
+                    <select id="vadFrameMs">
+                      <option value="10">10ms</option>
+                      <option value="20" selected>20ms</option>
+                      <option value="30">30ms</option>
+                    </select>
+                    <label for="vadThresholdDb">energy dB</label>
+                    <input id="vadThresholdDb" type="range" min="-70" max="-20" step="1" value="-48" />
+                    <span id="vadThresholdText" class="muted">-48 dB</span>
+                    <label for="vadMinSpeechMs">min speech</label>
+                    <input id="vadMinSpeechMs" type="number" min="80" max="5000" step="50" value="250" />
+                    <label for="vadMinSilenceMs">min silence</label>
+                    <input id="vadMinSilenceMs" type="number" min="20" max="5000" step="20" value="300" />
+                    <label for="vadPaddingMs">pad</label>
+                    <input id="vadPaddingMs" type="number" min="0" max="2000" step="50" value="200" />
+                  </div>
+                  <div class="subtitle-row">
                     <button id="generateSubtitle" class="btn-primary">Generate Subtitle</button>
                     <button id="cancelSubtitle" disabled>Cancel</button>
                     <button id="exportVtt" disabled>Export VTT</button>
@@ -841,6 +860,7 @@
                     <span id="subtitleProgressText" class="muted">Idle.</span>
                   </div>
                   <div id="subtitleMeta" class="detector-meta">model=-, speed=-, segment=-</div>
+                  <div id="vadMeta" class="detector-meta">Energy VAD: speech=0, threshold=-</div>
                   <div id="subtitleCueList" class="subtitle-cue-list"><div class="muted subtitle-empty">No subtitle cues.</div></div>
                 </div>
               </div>
@@ -1071,6 +1091,13 @@
     const asrDeviceEl = document.getElementById("asrDevice");
     const asrLanguageEl = document.getElementById("asrLanguage");
     const asrChunkSecEl = document.getElementById("asrChunkSec");
+    const asrUseVadEl = document.getElementById("asrUseVad");
+    const vadFrameMsEl = document.getElementById("vadFrameMs");
+    const vadThresholdDbEl = document.getElementById("vadThresholdDb");
+    const vadThresholdTextEl = document.getElementById("vadThresholdText");
+    const vadMinSpeechMsEl = document.getElementById("vadMinSpeechMs");
+    const vadMinSilenceMsEl = document.getElementById("vadMinSilenceMs");
+    const vadPaddingMsEl = document.getElementById("vadPaddingMs");
     const generateSubtitleBtn = document.getElementById("generateSubtitle");
     const cancelSubtitleBtn = document.getElementById("cancelSubtitle");
     const exportVttBtn = document.getElementById("exportVtt");
@@ -1078,6 +1105,7 @@
     const subtitleProgressEl = document.getElementById("subtitleProgress");
     const subtitleProgressTextEl = document.getElementById("subtitleProgressText");
     const subtitleMetaEl = document.getElementById("subtitleMeta");
+    const vadMetaEl = document.getElementById("vadMeta");
     const subtitleCueListEl = document.getElementById("subtitleCueList");
     const copyFailureBtn = document.getElementById("copyFailure");
     const clearFailureBtn = document.getElementById("clearFailure");
@@ -1148,6 +1176,7 @@
     let asrManager = null;
     let subtitleAbortController = null;
     let currentSubtitleTrack = null;
+    let currentVadSegments = [];
     let subtitleVttText = "";
     let subtitleSrtText = "";
     let detectionScheduler = createDetectionScheduler({
@@ -1193,6 +1222,9 @@
       if (!asrModelIdEl || !asrModelPresetEl) return;
       if (asrModelPresetEl.value !== "custom") asrModelIdEl.value = asrModelPresetEl.value;
     });
+    vadThresholdDbEl?.addEventListener("input", () => {
+      if (vadThresholdTextEl) vadThresholdTextEl.textContent = `${Number(vadThresholdDbEl.value).toFixed(0)} dB`;
+    });
 
     function setStatus(text) { statusEl.textContent = text; }
     function clearDecodedCanvasState() {
@@ -1219,11 +1251,13 @@
       subtitleAbortController?.abort?.();
       subtitleAbortController = null;
       currentSubtitleTrack = null;
+      currentVadSegments = [];
       subtitleVttText = "";
       subtitleSrtText = "";
       if (subtitleProgressEl) subtitleProgressEl.value = 0;
       if (subtitleProgressTextEl) subtitleProgressTextEl.textContent = "Idle.";
       if (subtitleMetaEl) subtitleMetaEl.textContent = "model=-, speed=-, segment=-";
+      if (vadMetaEl) vadMetaEl.textContent = "Energy VAD: speech=0, threshold=-";
       if (subtitleCueListEl) subtitleCueListEl.innerHTML = `<div class="muted subtitle-empty">No subtitle cues.</div>`;
       if (generateSubtitleBtn) generateSubtitleBtn.disabled = false;
       if (cancelSubtitleBtn) cancelSubtitleBtn.disabled = true;
@@ -1246,9 +1280,18 @@
         device: asrDeviceEl?.value || "auto",
         language: asrLanguageEl?.value || "auto",
         chunkDurationSec: Math.max(5, Math.min(120, Number(asrChunkSecEl?.value) || 30)),
+        useVad: asrUseVadEl?.checked !== false,
+        vadOptions: {
+          frameMs: [10, 20, 30].includes(Number(vadFrameMsEl?.value)) ? Number(vadFrameMsEl.value) : 20,
+          minSpeechMs: Math.max(80, Math.min(5000, Number(vadMinSpeechMsEl?.value) || 250)),
+          minSilenceMs: Math.max(20, Math.min(5000, Number(vadMinSilenceMsEl?.value) || 300)),
+          paddingMs: Math.max(0, Math.min(2000, Number(vadPaddingMsEl?.value) || 200)),
+          thresholdDb: Number.isFinite(Number(vadThresholdDbEl?.value)) ? Number(vadThresholdDbEl.value) : undefined,
+          adaptiveNoiseFloor: true,
+        },
       };
     }
-    function renderSubtitleProgress({ stage = "idle", current = 0, total = 0, message = "", segment = null, speed = null } = {}) {
+    function renderSubtitleProgress({ stage = "idle", current = 0, total = 0, message = "", segment = null, speed = null, vad = null } = {}) {
       const pct = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
       if (subtitleProgressEl) subtitleProgressEl.value = pct;
       if (subtitleProgressTextEl) {
@@ -1263,6 +1306,15 @@
         const segText = segment ? `${formatHms((segment.startMs || 0) / 1000)}-${formatHms((segment.endMs || 0) / 1000)}` : "-";
         const speedText = Number.isFinite(Number(speed)) ? `${Number(speed).toFixed(2)}x` : "-";
         subtitleMetaEl.textContent = `model=${settings.model || "-"}, device=${settings.device || "-"}, speed=${speedText}, segment=${segText}`;
+      }
+      if (vadMetaEl && stage === "vad" && vad) {
+        const speech = Array.isArray(vad.segments) ? vad.segments.length : 0;
+        const backend = vad.backend || vad.source || "vad";
+        const thresholdText = Number.isFinite(Number(vad.thresholdDb))
+          ? `${Number(vad.thresholdDb).toFixed(1)}dB`
+          : "-";
+        const noiseText = Number.isFinite(Number(vad.noiseFloorDb)) ? `${Number(vad.noiseFloorDb).toFixed(1)}dB` : "-";
+        vadMetaEl.textContent = `Energy VAD: speech+=${speech}, threshold=${thresholdText}, noise=${noiseText}`;
       }
     }
     function subtitleFileName(ext) {
@@ -1323,6 +1375,7 @@
           onProgress: renderSubtitleProgress,
         });
         currentSubtitleTrack = out.track;
+        currentVadSegments = Array.isArray(out.vadSegments) ? out.vadSegments : [];
         subtitleVttText = writeWebVtt(currentSubtitleTrack, { note: "Generated locally in browser ASR" });
         subtitleSrtText = writeSrt(currentSubtitleTrack);
         renderSubtitleCues(currentSubtitleTrack);
@@ -1331,9 +1384,10 @@
           stage: "done",
           current: out.stats.chunks,
           total: out.stats.chunks,
-          message: `cues=${currentSubtitleTrack.cues.length}`,
+          message: `cues=${currentSubtitleTrack.cues.length}, speech=${currentVadSegments.length}`,
           speed: out.stats.speed,
         });
+        if (vadMetaEl) vadMetaEl.textContent = `Energy VAD: speech=${currentVadSegments.length}, asrSegments=${out.stats.asrSegments}`;
         markTimelineTrackTimesDirty();
         scheduleDrawNleTimeline();
         setStatus(`Subtitle generated: cues=${currentSubtitleTrack.cues.length}, speed=${out.stats.speed.toFixed(2)}x.`);
@@ -2792,7 +2846,8 @@
         ts = (allFrames || []).map(getFrameTimeSec).filter((v) => typeof v === "number");
       }
       const subtitleTimes = (currentSubtitleTrack?.cues || []).flatMap((cue) => [cue.startMs / 1000, cue.endMs / 1000]).filter(Number.isFinite);
-      ts = ts.concat(subtitleTimes);
+      const vadTimes = (currentVadSegments || []).flatMap((seg) => [seg.startMs / 1000, seg.endMs / 1000]).filter(Number.isFinite);
+      ts = ts.concat(subtitleTimes, vadTimes);
       if (!ts.length) return null;
       const minT = Math.min(...ts);
       let maxT = Math.max(...ts);
@@ -2933,6 +2988,19 @@
         ctx.strokeRect(x0 + 0.5, g.sTrackTop + 4.5, w, g.trackH - 9);
       }
     }
+    function paintVadSegmentSpans(ctx, segments, g) {
+      const rows = Array.isArray(segments) ? segments : [];
+      if (!rows.length) return;
+      ctx.fillStyle = "rgba(255, 209, 102, 0.24)";
+      for (const seg of rows) {
+        const start = Number(seg.startMs) / 1000;
+        const end = Number(seg.endMs) / 1000;
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+        const x0 = timeToTimelineX(start, g);
+        const x1 = timeToTimelineX(Math.max(end, start + 0.08), g);
+        ctx.fillRect(x0, g.sTrackTop + 2, Math.max(2, x1 - x0), 3);
+      }
+    }
     function syncTransportLabels() {
       if (!transportTimeEl) return;
       const ph = typeof playheadSec === "number" && Number.isFinite(playheadSec)
@@ -3004,6 +3072,7 @@
 
       paintMergedTrackSpans(ctx, timelineVideoTimesSorted, g.vTrackTop, "rgba(93,168,255,0.82)", g);
       paintMergedTrackSpans(ctx, timelineAudioTimesSorted, g.aTrackTop, "rgba(122,209,122,0.72)", g);
+      paintVadSegmentSpans(ctx, currentVadSegments, g);
       paintSubtitleCueSpans(ctx, currentSubtitleTrack?.cues || [], g);
 
       const inSec = Number(segStartEl?.value);

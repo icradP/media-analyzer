@@ -1,6 +1,7 @@
 import { extractPcm16kChunks } from "./audioExtractor.js";
 import { createWhisperProvider } from "./whisperProvider.js";
 import { mergeSubtitleTracks, segmentsToSubtitleTrack } from "./subtitleGenerator.js";
+import { createEnergyVadProvider, slicePcmByVadSegment } from "./energyVad.js";
 
 export class AsrManager {
     constructor(options = {}) {
@@ -20,6 +21,8 @@ export class AsrManager {
             model,
             device = "auto",
             chunkDurationSec = 30,
+            useVad = true,
+            vadOptions = {},
             signal,
             onProgress,
         } = options;
@@ -32,61 +35,125 @@ export class AsrManager {
             onProgress,
         });
         const tracks = [];
+        const vadSegments = [];
         let audioMs = 0;
         let inferMs = 0;
+        const asrUnits = [];
         for (let i = 0; i < extracted.chunks.length; i++) {
             if (signal?.aborted) throw new DOMException("Subtitle generation cancelled.", "AbortError");
             const chunk = extracted.chunks[i];
+            if (useVad) {
+                const vad = this.detectSpeechSegments(chunk, { vadOptions });
+                for (const seg of vad.segments) {
+                    vadSegments.push({ ...seg, startMs: chunk.startMs + seg.startMs, endMs: chunk.startMs + seg.endMs });
+                    const pcm = slicePcmByVadSegment(chunk.pcm, seg, chunk.sampleRate || 16000);
+                    if (pcm.length) asrUnits.push({
+                        pcm,
+                        startMs: chunk.startMs + seg.startMs,
+                        endMs: chunk.startMs + seg.endMs,
+                        parentChunk: chunk,
+                        vadSegment: seg,
+                    });
+                }
+                onProgress?.({
+                    stage: "vad",
+                    current: i + 1,
+                    total: extracted.chunks.length,
+                    message: formatVadProgressMessage(vad),
+                    segment: chunk,
+                    vad,
+                });
+            } else {
+                asrUnits.push({
+                    pcm: chunk.pcm,
+                    startMs: chunk.startMs,
+                    endMs: chunk.endMs,
+                    parentChunk: chunk,
+                    vadSegment: null,
+                });
+            }
+        }
+        if (!asrUnits.length) {
+            return {
+                track: { language: language === "auto" ? undefined : language, cues: [] },
+                vadSegments,
+                stats: {
+                    chunks: extracted.chunks.length,
+                    asrSegments: 0,
+                    decodeElapsedMs: performance.now() - decodeStartedAt,
+                    inferElapsedMs: 0,
+                    audioDurationMs: 0,
+                    speed: 0,
+                    model,
+                    device,
+                    vad: useVad ? "energy" : "off",
+                },
+            };
+        }
+        for (let i = 0; i < asrUnits.length; i++) {
+            if (signal?.aborted) throw new DOMException("Subtitle generation cancelled.", "AbortError");
+            const unit = asrUnits[i];
             onProgress?.({
                 stage: "asr",
                 current: i + 1,
-                total: extracted.chunks.length,
-                message: `ASR chunk ${i + 1}/${extracted.chunks.length}`,
-                segment: chunk,
+                total: asrUnits.length,
+                message: `ASR speech segment ${i + 1}/${asrUnits.length}`,
+                segment: unit,
             });
-            const result = await this.transcribeChunk(chunk.pcm, {
+            const result = await this.transcribeChunk(unit.pcm, {
                 language,
                 model,
                 device,
-                durationMs: chunk.endMs - chunk.startMs,
+                durationMs: unit.endMs - unit.startMs,
                 signal,
                 onProgress: (progress) => onProgress?.({
                     stage: "model",
                     current: i + 1,
-                    total: extracted.chunks.length,
+                    total: asrUnits.length,
                     message: progress?.status || progress?.file || "loading model",
-                    segment: chunk,
+                    segment: unit,
                     detail: progress,
                 }),
             });
-            audioMs += result.audioDurationMs || (chunk.endMs - chunk.startMs);
+            audioMs += result.audioDurationMs || (unit.endMs - unit.startMs);
             inferMs += result.elapsedMs || 0;
             tracks.push(segmentsToSubtitleTrack(result.segments, {
-                offsetMs: chunk.startMs,
+                offsetMs: unit.startMs,
                 language: language === "auto" ? undefined : language,
             }));
             onProgress?.({
                 stage: "asr",
                 current: i + 1,
-                total: extracted.chunks.length,
-                message: `ASR chunk ${i + 1}/${extracted.chunks.length} done`,
-                segment: chunk,
+                total: asrUnits.length,
+                message: `ASR speech segment ${i + 1}/${asrUnits.length} done`,
+                segment: unit,
                 speed: result.speed,
             });
         }
         const track = mergeSubtitleTracks(tracks, { language: language === "auto" ? undefined : language });
         return {
             track,
+            vadSegments,
             stats: {
                 chunks: extracted.chunks.length,
+                asrSegments: asrUnits.length,
                 decodeElapsedMs: performance.now() - decodeStartedAt - inferMs,
                 inferElapsedMs: inferMs,
                 audioDurationMs: audioMs,
                 speed: inferMs > 0 ? audioMs / inferMs : 0,
                 model,
                 device,
+                vad: useVad ? "energy" : "off",
             },
         };
+    }
+
+    detectSpeechSegments(chunk, options = {}) {
+        const provider = createEnergyVadProvider(options.vadOptions || {});
+        return provider.detect(chunk.pcm, {
+            ...(options.vadOptions || {}),
+            sampleRate: chunk.sampleRate || 16000,
+        });
     }
 
     transcribeChunk(pcm, options = {}) {
@@ -174,6 +241,15 @@ function stripWorkerOptions(options) {
     delete out.onProgress;
     delete out.signal;
     return out;
+}
+
+function formatVadProgressMessage(vad = {}) {
+    const speech = Array.isArray(vad.segments) ? vad.segments.length : 0;
+    const backend = vad.backend || vad.source || "vad";
+    if (Number.isFinite(Number(vad.thresholdDb))) {
+        return `${backend}: speech=${speech}, threshold=${Number(vad.thresholdDb).toFixed(1)}dB`;
+    }
+    return `${backend}: speech=${speech}`;
 }
 
 export const asrManager = Object.freeze({ AsrManager, createAsrManager });

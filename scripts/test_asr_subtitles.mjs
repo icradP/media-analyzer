@@ -3,6 +3,8 @@ import { resampleFloat32, groupAudioFramesByTime, selectAudioFrames, unwrapAudio
 import { segmentsToSubtitleTrack, mergeSubtitleTracks } from "../src/asr/subtitleGenerator.js";
 import { writeWebVtt } from "../src/asr/vttWriter.js";
 import { writeSrt } from "../src/asr/srtWriter.js";
+import { detectEnergyVad, slicePcmByVadSegment } from "../src/asr/energyVad.js";
+import { createEnergyVadProvider, normalizeVadBackend } from "../src/asr/index.js";
 
 const input = new Float32Array([0, 1, 0, -1]);
 const resampled = resampleFloat32(input, 4, 2);
@@ -24,6 +26,36 @@ const wrapper = { _mediaType: "audio", _rawFrame: raw };
 const selected = selectAudioFrames([wrapper], { startSec: 1, endSec: 2 });
 assert.equal(selected.length, 1);
 assert.equal(unwrapAudioFrameForDecode(selected[0]), raw);
+
+const vadPcm = new Float32Array(16000);
+for (let i = 4000; i < 8000; i++) vadPcm[i] = Math.sin(i / 8) * 0.25;
+const vad = detectEnergyVad(vadPcm, {
+  sampleRate: 16000,
+  frameMs: 20,
+  thresholdDb: -35,
+  adaptiveNoiseFloor: false,
+  minSpeechMs: 100,
+  minSilenceMs: 80,
+  paddingMs: 100,
+});
+assert.equal(vad.segments.length, 1);
+assert.equal(vad.segments[0].backend, "energy");
+assert.ok(vad.segments[0].startMs <= 260);
+assert.ok(vad.segments[0].endMs >= 560);
+assert.ok(slicePcmByVadSegment(vadPcm, vad.segments[0], 16000).length > 0);
+
+assert.equal(normalizeVadBackend("energy-vad"), "energy");
+assert.equal(normalizeVadBackend("unknown"), "energy");
+const provider = createEnergyVadProvider({ thresholdDb: -35, adaptiveNoiseFloor: false });
+const providerVad = await provider.detect(vadPcm, {
+  sampleRate: 16000,
+  frameMs: 20,
+  minSpeechMs: 100,
+  minSilenceMs: 80,
+  paddingMs: 100,
+});
+assert.equal(providerVad.backend, "energy");
+assert.equal(providerVad.segments.length, 1);
 
 const trackA = segmentsToSubtitleTrack([
   { startMs: 0, endMs: 1200, text: " hello   world " },
