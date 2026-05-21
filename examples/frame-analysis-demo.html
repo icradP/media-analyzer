@@ -196,7 +196,7 @@
     .btn-primary { border-color: #3d6fa8; background: #1a2d45; }
     #timelineCanvas {
       width: 100%;
-      height: 96px;
+      height: 126px;
       display: block;
       border-radius: 6px;
       border: 1px solid var(--border);
@@ -348,11 +348,57 @@
     .tree-wrap .tree-line { padding: 2px 0 2px 14px; color: #b8d1ff; }
     .tree-wrap .tree-key { color: var(--muted); margin-right: 6px; }
     .field-item {
-      padding: 4px 8px;
+      padding: 5px 8px;
       border-bottom: 1px solid #1e2634;
       cursor: pointer;
       color: #b8d1ff;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px;
     }
+    .field-item-head {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .field-item-idx { color: var(--muted); min-width: 28px; }
+    .field-item-name { color: #d3e6ff; word-break: break-all; }
+    .field-item-range { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .field-item-value {
+      color: #9fd0ff;
+      font-size: 11px;
+      word-break: break-all;
+      padding-left: 36px;
+    }
+    .field-item-roles {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      padding-left: 36px;
+    }
+    .timing-role {
+      display: inline-block;
+      padding: 0 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #0b0f17;
+      background: #ffd166;
+    }
+    .timing-role[title] { cursor: help; }
+    .field-item.timing-linked { border-left: 2px solid #ffd166; }
+    .timing-provenance {
+      margin: 6px 0 4px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: rgba(255, 209, 102, 0.08);
+      border: 1px solid rgba(255, 209, 102, 0.25);
+      color: #e6d5a8;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .timing-provenance .tp-line { padding: 2px 0; }
     .field-item:hover { background: rgba(93,168,255,0.2); }
     .field-item.active { background: rgba(93,168,255,0.35); color: #fff; }
     .field-empty { padding: 8px; color: var(--muted); }
@@ -535,6 +581,63 @@
       flex-wrap: wrap;
       margin-top: 6px;
     }
+    .subtitle-panel {
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+      padding-top: 8px;
+    }
+    .subtitle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      font-size: 12px;
+    }
+    .subtitle-row input,
+    .subtitle-row select { min-width: 92px; }
+    .subtitle-model-input { flex: 1 1 220px; min-width: 180px; }
+    .subtitle-progress {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 6px;
+    }
+    .subtitle-progress progress {
+      width: 100%;
+      height: 12px;
+      accent-color: #7ad17a;
+    }
+    .subtitle-cue-list {
+      max-height: 220px;
+      overflow: auto;
+      margin-top: 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #0c111a;
+    }
+    .subtitle-cue {
+      display: grid;
+      grid-template-columns: 108px minmax(0, 1fr);
+      gap: 8px;
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      cursor: pointer;
+    }
+    .subtitle-cue:last-child { border-bottom: 0; }
+    .subtitle-cue:hover { background: rgba(122, 209, 122, 0.08); }
+    .subtitle-cue-time {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+    }
+    .subtitle-cue-text {
+      color: var(--fg);
+      min-width: 0;
+      word-break: break-word;
+    }
+    .subtitle-empty { padding: 8px; }
     @media (max-width: 1100px) {
       .right-grid { grid-template-columns: 1fr; }
       .monitor-layout {
@@ -696,6 +799,52 @@
                 <textarea id="seiAsciiText" class="sei-text" placeholder="Payload ASCII view/editor (currently ASCII only)."></textarea>
               </div>
             </details>
+            <details class="collapsible-panel monitor-subtitle-card" open>
+              <summary>Auto Subtitle</summary>
+              <div class="collapsible-panel-content">
+                <div class="subtitle-panel">
+                  <div class="muted">Local ASR: extract AAC audio, decode PCM 16kHz mono, run Whisper in browser worker, export WebVTT/SRT.</div>
+                  <div class="subtitle-row">
+                    <label for="asrModelPreset">model</label>
+                    <select id="asrModelPreset">
+                      <option value="onnx-community/whisper-tiny" selected>tiny</option>
+                      <option value="onnx-community/whisper-base">base</option>
+                      <option value="onnx-community/whisper-small">small</option>
+                      <option value="custom">custom</option>
+                    </select>
+                    <label for="asrDevice">device</label>
+                    <select id="asrDevice">
+                      <option value="auto" selected>auto</option>
+                      <option value="webgpu">webgpu</option>
+                      <option value="wasm">wasm</option>
+                    </select>
+                    <label for="asrLanguage">lang</label>
+                    <select id="asrLanguage">
+                      <option value="auto" selected>auto</option>
+                      <option value="zh">中文</option>
+                      <option value="en">English</option>
+                    </select>
+                  </div>
+                  <div class="subtitle-row">
+                    <input id="asrModelId" class="subtitle-model-input" type="text" value="onnx-community/whisper-tiny" />
+                    <label for="asrChunkSec">chunk(s)</label>
+                    <input id="asrChunkSec" type="number" min="5" max="120" step="5" value="30" />
+                  </div>
+                  <div class="subtitle-row">
+                    <button id="generateSubtitle" class="btn-primary">Generate Subtitle</button>
+                    <button id="cancelSubtitle" disabled>Cancel</button>
+                    <button id="exportVtt" disabled>Export VTT</button>
+                    <button id="exportSrt" disabled>Export SRT</button>
+                  </div>
+                  <div class="subtitle-progress">
+                    <progress id="subtitleProgress" value="0" max="100"></progress>
+                    <span id="subtitleProgressText" class="muted">Idle.</span>
+                  </div>
+                  <div id="subtitleMeta" class="detector-meta">model=-, speed=-, segment=-</div>
+                  <div id="subtitleCueList" class="subtitle-cue-list"><div class="muted subtitle-empty">No subtitle cues.</div></div>
+                </div>
+              </div>
+            </details>
             <details class="collapsible-panel monitor-hex-card">
               <summary>HexDataView</summary>
               <div class="collapsible-panel-content">
@@ -726,7 +875,7 @@
       <section class="card timeline-card">
         <h2 class="title">时间轴（标尺 + 轨道）</h2>
         <div class="timeline-strip">
-          <canvas id="timelineCanvas" width="900" height="96"></canvas>
+          <canvas id="timelineCanvas" width="900" height="126"></canvas>
           <div class="timeline-hint muted">独立时间轴：拖播放头，拖入出点，点击轨道定位到对应帧。</div>
         </div>
       </section>
@@ -841,8 +990,15 @@
       readDetectionSeiPayloadFromFrame,
       detectionSeiPayloadToCanvasDetections,
       normalizeDetectionSeiProcessOptions,
+      buildTimingAnalytics,
+      timingRoleBadges,
     } from "../lib/browser/index.js";
     import { VideoSegmentPlayer } from "../lib/player/index.js";
+    import {
+      createAsrManager,
+      writeWebVtt,
+      writeSrt,
+    } from "../src/asr/index.js";
 
     const fileEl = document.getElementById("file");
     const analyzeBtn = document.getElementById("analyze");
@@ -910,6 +1066,19 @@
     const detectionSeiWriteEmptyEl = document.getElementById("detectionSeiWriteEmpty");
     const detectionSeiProgressEl = document.getElementById("detectionSeiProgress");
     const detectionSeiProgressTextEl = document.getElementById("detectionSeiProgressText");
+    const asrModelPresetEl = document.getElementById("asrModelPreset");
+    const asrModelIdEl = document.getElementById("asrModelId");
+    const asrDeviceEl = document.getElementById("asrDevice");
+    const asrLanguageEl = document.getElementById("asrLanguage");
+    const asrChunkSecEl = document.getElementById("asrChunkSec");
+    const generateSubtitleBtn = document.getElementById("generateSubtitle");
+    const cancelSubtitleBtn = document.getElementById("cancelSubtitle");
+    const exportVttBtn = document.getElementById("exportVtt");
+    const exportSrtBtn = document.getElementById("exportSrt");
+    const subtitleProgressEl = document.getElementById("subtitleProgress");
+    const subtitleProgressTextEl = document.getElementById("subtitleProgressText");
+    const subtitleMetaEl = document.getElementById("subtitleMeta");
+    const subtitleCueListEl = document.getElementById("subtitleCueList");
     const copyFailureBtn = document.getElementById("copyFailure");
     const clearFailureBtn = document.getElementById("clearFailure");
     const canvasEl = document.getElementById("videoCanvas");
@@ -921,6 +1090,7 @@
 
     let result = null;
     let resultMap = null;
+    let timingAnalytics = null;
     let currentFileBytes = null;
     let currentSourceMeta = null;
     let currentDownloadName = "";
@@ -975,6 +1145,11 @@
     let processedDetectionSeiBytes = null;
     let processedDetectionSeiMime = "";
     let processedDetectionSeiName = "";
+    let asrManager = null;
+    let subtitleAbortController = null;
+    let currentSubtitleTrack = null;
+    let subtitleVttText = "";
+    let subtitleSrtText = "";
     let detectionScheduler = createDetectionScheduler({
       fullFrameInterval: 15,
       roiFrameInterval: 1,
@@ -1014,6 +1189,10 @@
     motionDebugModeEl?.addEventListener("change", resetMotionRoiState);
     yoloEveryEl?.addEventListener("change", resetMotionRoiState);
     fullFrameEveryEl?.addEventListener("change", resetMotionRoiState);
+    asrModelPresetEl?.addEventListener("change", () => {
+      if (!asrModelIdEl || !asrModelPresetEl) return;
+      if (asrModelPresetEl.value !== "custom") asrModelIdEl.value = asrModelPresetEl.value;
+    });
 
     function setStatus(text) { statusEl.textContent = text; }
     function clearDecodedCanvasState() {
@@ -1035,6 +1214,141 @@
       if (exportDetectionSeiBtn) exportDetectionSeiBtn.disabled = true;
       if (detectionSeiProgressEl) detectionSeiProgressEl.value = 0;
       if (detectionSeiProgressTextEl) detectionSeiProgressTextEl.textContent = "Idle.";
+    }
+    function resetSubtitleState() {
+      subtitleAbortController?.abort?.();
+      subtitleAbortController = null;
+      currentSubtitleTrack = null;
+      subtitleVttText = "";
+      subtitleSrtText = "";
+      if (subtitleProgressEl) subtitleProgressEl.value = 0;
+      if (subtitleProgressTextEl) subtitleProgressTextEl.textContent = "Idle.";
+      if (subtitleMetaEl) subtitleMetaEl.textContent = "model=-, speed=-, segment=-";
+      if (subtitleCueListEl) subtitleCueListEl.innerHTML = `<div class="muted subtitle-empty">No subtitle cues.</div>`;
+      if (generateSubtitleBtn) generateSubtitleBtn.disabled = false;
+      if (cancelSubtitleBtn) cancelSubtitleBtn.disabled = true;
+      if (exportVttBtn) exportVttBtn.disabled = true;
+      if (exportSrtBtn) exportSrtBtn.disabled = true;
+      markTimelineTrackTimesDirty();
+    }
+    function setSubtitleBusy(isBusy) {
+      if (generateSubtitleBtn) generateSubtitleBtn.disabled = isBusy;
+      if (cancelSubtitleBtn) cancelSubtitleBtn.disabled = !isBusy;
+      if (exportVttBtn) exportVttBtn.disabled = isBusy || !subtitleVttText;
+      if (exportSrtBtn) exportSrtBtn.disabled = isBusy || !subtitleSrtText;
+    }
+    function readSubtitleSettings() {
+      const preset = asrModelPresetEl?.value || "onnx-community/whisper-tiny";
+      const model = preset === "custom" ? (asrModelIdEl?.value || "").trim() : preset;
+      if (!model) throw new Error("ASR model is required.");
+      return {
+        model,
+        device: asrDeviceEl?.value || "auto",
+        language: asrLanguageEl?.value || "auto",
+        chunkDurationSec: Math.max(5, Math.min(120, Number(asrChunkSecEl?.value) || 30)),
+      };
+    }
+    function renderSubtitleProgress({ stage = "idle", current = 0, total = 0, message = "", segment = null, speed = null } = {}) {
+      const pct = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
+      if (subtitleProgressEl) subtitleProgressEl.value = pct;
+      if (subtitleProgressTextEl) {
+        subtitleProgressTextEl.textContent = total > 0
+          ? `${stage} ${current}/${total} ${pct.toFixed(1)}%${message ? `, ${message}` : ""}`
+          : (message || "Idle.");
+      }
+      if (subtitleMetaEl) {
+        const settings = (() => {
+          try { return readSubtitleSettings(); } catch { return {}; }
+        })();
+        const segText = segment ? `${formatHms((segment.startMs || 0) / 1000)}-${formatHms((segment.endMs || 0) / 1000)}` : "-";
+        const speedText = Number.isFinite(Number(speed)) ? `${Number(speed).toFixed(2)}x` : "-";
+        subtitleMetaEl.textContent = `model=${settings.model || "-"}, device=${settings.device || "-"}, speed=${speedText}, segment=${segText}`;
+      }
+    }
+    function subtitleFileName(ext) {
+      const base = currentSourceMeta?.fileName || currentDownloadName || "subtitle";
+      const dot = base.lastIndexOf(".");
+      return `${dot > 0 ? base.slice(0, dot) : base}.asr.${ext}`;
+    }
+    function renderSubtitleCues(track = currentSubtitleTrack) {
+      if (!subtitleCueListEl) return;
+      const cues = Array.isArray(track?.cues) ? track.cues : [];
+      if (!cues.length) {
+        subtitleCueListEl.innerHTML = `<div class="muted subtitle-empty">No subtitle cues.</div>`;
+        return;
+      }
+      subtitleCueListEl.innerHTML = cues.map((cue, i) => `
+        <div class="subtitle-cue" data-cue-index="${i}">
+          <div class="subtitle-cue-time">${esc(formatHms(cue.startMs / 1000))}</div>
+          <div class="subtitle-cue-text" contenteditable="true" data-cue-text="${i}">${esc(cue.text)}</div>
+        </div>
+      `).join("");
+    }
+    function refreshSubtitleExports() {
+      if (!currentSubtitleTrack) return;
+      const editable = Array.from(subtitleCueListEl?.querySelectorAll("[data-cue-text]") || []);
+      for (const el of editable) {
+        const idx = Number(el.getAttribute("data-cue-text"));
+        if (currentSubtitleTrack.cues[idx]) currentSubtitleTrack.cues[idx].text = el.textContent || "";
+      }
+      subtitleVttText = writeWebVtt(currentSubtitleTrack, { note: "Generated locally in browser ASR" });
+      subtitleSrtText = writeSrt(currentSubtitleTrack);
+      if (exportVttBtn) exportVttBtn.disabled = !subtitleVttText;
+      if (exportSrtBtn) exportSrtBtn.disabled = !subtitleSrtText;
+    }
+    function exportSubtitleText(kind) {
+      refreshSubtitleExports();
+      const isSrt = kind === "srt";
+      const text = isSrt ? subtitleSrtText : subtitleVttText;
+      if (!text) throw new Error("Generate subtitle first.");
+      const bytes = new TextEncoder().encode(text);
+      const out = downloadBytesAsFile(bytes, subtitleFileName(isSrt ? "srt" : "vtt"), isSrt ? "application/x-subrip;charset=utf-8" : "text/vtt;charset=utf-8");
+      setStatus(`Subtitle exported: ${out.fileName} (${out.size} bytes).`);
+    }
+    async function generateSubtitleTrack() {
+      if (!result) throw new Error("Analyze a media file first.");
+      const audioFrames = (allFrames || []).filter((f) => f._mediaType === "audio" && isPlayableTimelineFrame(f));
+      if (!audioFrames.length) throw new Error("No playable audio frames found.");
+      const settings = readSubtitleSettings();
+      subtitleAbortController = new AbortController();
+      setSubtitleBusy(true);
+      renderSubtitleProgress({ stage: "start", message: "Preparing audio..." });
+      try {
+        asrManager ||= createAsrManager({ useWorker: true });
+        const out = await asrManager.generateSubtitles({
+          frames: audioFrames,
+          mediaInfo: result,
+          ...settings,
+          signal: subtitleAbortController.signal,
+          onProgress: renderSubtitleProgress,
+        });
+        currentSubtitleTrack = out.track;
+        subtitleVttText = writeWebVtt(currentSubtitleTrack, { note: "Generated locally in browser ASR" });
+        subtitleSrtText = writeSrt(currentSubtitleTrack);
+        renderSubtitleCues(currentSubtitleTrack);
+        setSubtitleBusy(false);
+        renderSubtitleProgress({
+          stage: "done",
+          current: out.stats.chunks,
+          total: out.stats.chunks,
+          message: `cues=${currentSubtitleTrack.cues.length}`,
+          speed: out.stats.speed,
+        });
+        markTimelineTrackTimesDirty();
+        scheduleDrawNleTimeline();
+        setStatus(`Subtitle generated: cues=${currentSubtitleTrack.cues.length}, speed=${out.stats.speed.toFixed(2)}x.`);
+      } catch (err) {
+        setSubtitleBusy(false);
+        if (err?.name === "AbortError") {
+          setStatus("Subtitle generation cancelled.");
+          renderSubtitleProgress({ stage: "cancelled", message: "Cancelled." });
+        } else {
+          setStatus(`Subtitle generation failed: ${err?.message || String(err)}`);
+          renderSubtitleProgress({ stage: "error", message: err?.message || String(err) });
+        }
+      } finally {
+        subtitleAbortController = null;
+      }
     }
     function closeAutoDetectJob(job) {
       try {
@@ -1390,16 +1704,45 @@
             .map(([k, v]) => `<div class="tree-line"><span class="tree-key">${esc(k)}</span>${esc(v)}</div>`)
             .join("")
         : `<div class="tree-line">-</div>`;
+      const ftp = detail.frameTimeProvenance;
+      const frameTimeHint = ftp?.primary
+        ? `<div class="tree-line"><span class="tree-key">time轴</span>${esc(ftp.primary)} ← ${esc((ftp.fields || []).join(" + ") || "-")}</div>
+           <div class="tree-line"><span class="tree-key">公式</span>${esc(ftp.formula || "-")}</div>`
+        : "";
+      const timingGlobal = timingAnalytics?.summaryLines?.length
+        ? `<div class="timing-provenance">${timingAnalytics.summaryLines.map((ln) => `<div class="tp-line">${esc(ln)}</div>`).join("")}</div>`
+        : "";
       const fieldRows = detail.fieldOffsets.length
         ? detail.fieldOffsets
             .map((r, i) => {
               const key = `${r.field}@${r.offset}:${r.length}`;
-              const cls = key === activeFieldKey ? "field-item active" : "field-item";
-              return `<div class="${cls}" data-field-key="${esc(key)}">${esc(String(i).padStart(3, "0"))} ${esc(r.field)} [${r.offset}, ${r.length}]</div>`;
+              const hasTiming = Array.isArray(r.timingRoles) && r.timingRoles.length > 0;
+              const cls = [
+                "field-item",
+                key === activeFieldKey ? "active" : "",
+                hasTiming ? "timing-linked" : "",
+              ].filter(Boolean).join(" ");
+              const range = `[${r.offset}, ${r.length}]${r.bitMeta ? ` ${r.bitMeta}` : ""}`;
+              const value = r.value ?? r.parsedValue ?? r.hexValue ?? "—";
+              const rolesHtml = hasTiming ? `<div class="field-item-roles">${timingRoleBadges(r.timingRoles)}</div>` : "";
+              return `<div class="${cls}" data-field-key="${esc(key)}">
+                <div class="field-item-head">
+                  <span class="field-item-idx">${esc(String(i).padStart(3, "0"))}</span>
+                  <span class="field-item-name">${esc(r.field)}</span>
+                  <span class="field-item-range">${esc(range)}</span>
+                </div>
+                <div class="field-item-value" title="${esc(value)}">${esc(value)}</div>
+                ${rolesHtml}
+              </div>`;
             })
             .join("")
         : `<div class="tree-line">-</div>`;
       selectedTreeEl.innerHTML = `
+        <details open>
+          <summary>Timing / FPS 溯源</summary>
+          ${timingGlobal || `<div class="tree-line muted">分析文件后显示全局 FPS/时长来源</div>`}
+          ${frameTimeHint}
+        </details>
         <details open>
           <summary>Time</summary>
           <div class="tree-line"><span class="tree-key">pts</span>${esc(detail.time.pts ?? "-")}</div>
@@ -1422,7 +1765,7 @@
           ${tsPesRows}
         </details>
         <details open>
-          <summary>Field Offsets (${detail.fieldOffsets.length})</summary>
+          <summary>Field Offsets (${detail.fieldOffsets.length}) <span class="muted" style="font-weight:400">· 黄标=参与时间/FPS</span></summary>
           ${fieldRows}
         </details>
       `;
@@ -2448,6 +2791,8 @@
       if (!ts.length) {
         ts = (allFrames || []).map(getFrameTimeSec).filter((v) => typeof v === "number");
       }
+      const subtitleTimes = (currentSubtitleTrack?.cues || []).flatMap((cue) => [cue.startMs / 1000, cue.endMs / 1000]).filter(Number.isFinite);
+      ts = ts.concat(subtitleTimes);
       if (!ts.length) return null;
       const minT = Math.min(...ts);
       let maxT = Math.max(...ts);
@@ -2468,7 +2813,7 @@
     }
     function timelineCssSize() {
       const w = timelineCanvasEl.clientWidth || 800;
-      const h = 96;
+      const h = 126;
       return { w, h };
     }
     function buildTimelineGeom(cssW, cssH) {
@@ -2486,6 +2831,7 @@
         innerW,
         vTrackTop: trackTop,
         aTrackTop: trackTop + TL_TRACK_H + TL_GAP,
+        sTrackTop: trackTop + (TL_TRACK_H + TL_GAP) * 2,
         trackH: TL_TRACK_H,
       };
     }
@@ -2569,6 +2915,24 @@
       }
       flush();
     }
+    function paintSubtitleCueSpans(ctx, cues, g) {
+      const rows = Array.isArray(cues) ? cues : [];
+      if (!rows.length) return;
+      ctx.fillStyle = "rgba(122, 209, 122, 0.38)";
+      ctx.strokeStyle = "rgba(122, 209, 122, 0.86)";
+      ctx.lineWidth = 1;
+      ctx.font = "10px ui-sans-serif";
+      for (const cue of rows) {
+        const start = Number(cue.startMs) / 1000;
+        const end = Number(cue.endMs) / 1000;
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+        const x0 = timeToTimelineX(start, g);
+        const x1 = timeToTimelineX(Math.max(end, start + 0.15), g);
+        const w = Math.max(2, x1 - x0);
+        ctx.fillRect(x0, g.sTrackTop + 4, w, g.trackH - 8);
+        ctx.strokeRect(x0 + 0.5, g.sTrackTop + 4.5, w, g.trackH - 9);
+      }
+    }
     function syncTransportLabels() {
       if (!transportTimeEl) return;
       const ph = typeof playheadSec === "number" && Number.isFinite(playheadSec)
@@ -2630,14 +2994,17 @@
       ctx.fillStyle = "#131b28";
       ctx.fillRect(g.innerLeft, g.vTrackTop, g.innerW, g.trackH);
       ctx.fillRect(g.innerLeft, g.aTrackTop, g.innerW, g.trackH);
+      ctx.fillRect(g.innerLeft, g.sTrackTop, g.innerW, g.trackH);
 
       ctx.fillStyle = "#6b7c94";
       ctx.font = "11px ui-sans-serif";
       ctx.fillText("V", 14, g.vTrackTop + g.trackH / 2 + 4);
       ctx.fillText("A", 14, g.aTrackTop + g.trackH / 2 + 4);
+      ctx.fillText("S", 14, g.sTrackTop + g.trackH / 2 + 4);
 
       paintMergedTrackSpans(ctx, timelineVideoTimesSorted, g.vTrackTop, "rgba(93,168,255,0.82)", g);
       paintMergedTrackSpans(ctx, timelineAudioTimesSorted, g.aTrackTop, "rgba(122,209,122,0.72)", g);
+      paintSubtitleCueSpans(ctx, currentSubtitleTrack?.cues || [], g);
 
       const inSec = Number(segStartEl?.value);
       const outSec = Number(segEndEl?.value);
@@ -2647,17 +3014,18 @@
         ctx.fillStyle = "rgba(255, 209, 102, 0.2)";
         ctx.fillRect(x0, g.vTrackTop, Math.max(1, x1 - x0), g.trackH);
         ctx.fillRect(x0, g.aTrackTop, Math.max(1, x1 - x0), g.trackH);
+        ctx.fillRect(x0, g.sTrackTop, Math.max(1, x1 - x0), g.trackH);
         ctx.strokeStyle = "#ffd166";
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(x0, g.vTrackTop);
-        ctx.lineTo(x0, g.aTrackTop + g.trackH);
+        ctx.lineTo(x0, g.sTrackTop + g.trackH);
         ctx.moveTo(x1, g.vTrackTop);
-        ctx.lineTo(x1, g.aTrackTop + g.trackH);
+        ctx.lineTo(x1, g.sTrackTop + g.trackH);
         ctx.stroke();
         ctx.fillStyle = "#ffd166";
         ctx.fillRect(x0 - 3, g.vTrackTop, 6, g.trackH);
-        ctx.fillRect(x1 - 3, g.aTrackTop, 6, g.trackH);
+        ctx.fillRect(x1 - 3, g.sTrackTop, 6, g.trackH);
       }
 
       if (typeof playheadSec === "number" && Number.isFinite(playheadSec)) {
@@ -2692,7 +3060,9 @@
       if (!g) return null;
       const inner = mx >= g.innerLeft && mx <= g.innerLeft + g.innerW;
       if (!inner) return null;
-      const inTracks = my >= g.vTrackTop && my <= g.aTrackTop + g.trackH;
+      const inSubtitle = my >= g.sTrackTop && my <= g.sTrackTop + g.trackH;
+      if (inSubtitle && findSubtitleCueAtTimelinePoint(mx, g)) return "subtitle-cue";
+      const inTracks = my >= g.vTrackTop && my <= g.sTrackTop + g.trackH;
       const inRuler = my >= 0 && my <= TL_RULER_H;
       if (inTracks) {
         const inSec = Number(segStartEl?.value);
@@ -2708,6 +3078,14 @@
       }
       if (inRuler) return "playhead";
       return null;
+    }
+    function findSubtitleCueAtTimelinePoint(mx, g) {
+      const t = timelinePointerXToTime(mx, g);
+      return (currentSubtitleTrack?.cues || []).find((cue) => {
+        const start = Number(cue.startMs) / 1000;
+        const end = Number(cue.endMs) / 1000;
+        return Number.isFinite(start) && Number.isFinite(end) && t >= start && t <= Math.max(end, start + 0.15);
+      }) || null;
     }
 
     function pickTimelineGeomFromClient(clientX, clientY) {
@@ -2809,6 +3187,16 @@
         if (!g) return;
         const kind = timelineHitKind(mx, my, g);
         if (!kind) return;
+        if (kind === "subtitle-cue") {
+          const cue = findSubtitleCueAtTimelinePoint(mx, g);
+          if (cue) {
+            playheadSec = cue.startMs / 1000;
+            selectShownFrameForPlayhead(playheadSec, { decodeVideo: true });
+            scheduleDrawNleTimeline();
+            ev.preventDefault();
+          }
+          return;
+        }
         timelineDrag = { type: kind, pointerId: ev.pointerId };
         timelineCanvasEl.setPointerCapture(ev.pointerId);
         const timelineMinT = bounds.minT;
@@ -3159,16 +3547,23 @@
       const frames = shownFrames || [];
       const video = frames.filter((f) => f._mediaType === "video");
       const audio = frames.filter((f) => f._mediaType === "audio");
-      const durationSec = (() => {
+      timingAnalytics = result
+        ? buildTimingAnalytics({ result, frames, getFrameTimeSec })
+        : null;
+      const durationSec = timingAnalytics?.durationSec ?? (() => {
         const ts = frames.map(getFrameTimeSec).filter((v) => typeof v === "number");
         if (ts.length < 2) return 0;
         return Math.max(0, Math.max(...ts) - Math.min(...ts));
       })();
       const totalBytes = frames.reduce((s, f) => s + (Number(f._size) || 0), 0);
       const avgKbps = durationSec > 0 ? (totalBytes * 8) / 1000 / durationSec : 0;
+      const measFps = timingAnalytics?.intervalFps?.fps;
+      const streamFps = timingAnalytics?.streamFps?.fps;
       statsSummaryEl.innerHTML = `
         <div class="stats-item"><span class="k">frames</span>${frames.length}</div>
         <div class="stats-item"><span class="k">duration(s)</span>${durationSec.toFixed(3)}</div>
+        <div class="stats-item"><span class="k">FPS Δt</span>${measFps != null ? `${measFps.toFixed(2)} ← ptsTime` : "-"}</div>
+        <div class="stats-item"><span class="k">FPS stream</span>${streamFps != null ? `${streamFps} (${timingAnalytics?.streamFps?.source || "-"})` : "-"}</div>
         <div class="stats-item"><span class="k">avg bitrate(kbps)</span>${avgKbps.toFixed(2)}</div>
         <div class="stats-item"><span class="k">A/V</span>v:${video.length} / a:${audio.length}</div>
       `;
@@ -3583,6 +3978,7 @@
       currentSourceMeta = fileMeta || {};
       resetMotionRoiState();
       resetDetectionSeiExportState();
+      resetSubtitleState();
       clearDecodedCanvasState();
       currentDownloadName = buildCapturedMediaFileName({
         bytes,
@@ -3977,10 +4373,40 @@
         setStatus(`SEI payload ASCII->Hex failed: ${err?.message || String(err)}`);
       }
     });
+    generateSubtitleBtn?.addEventListener("click", () => {
+      generateSubtitleTrack().catch((err) => {
+        setSubtitleBusy(false);
+        setStatus(`Subtitle generation failed: ${err?.message || String(err)}`);
+      });
+    });
+    cancelSubtitleBtn?.addEventListener("click", () => {
+      subtitleAbortController?.abort?.();
+    });
+    exportVttBtn?.addEventListener("click", () => {
+      try { exportSubtitleText("vtt"); }
+      catch (err) { setStatus(`Export VTT failed: ${err?.message || String(err)}`); }
+    });
+    exportSrtBtn?.addEventListener("click", () => {
+      try { exportSubtitleText("srt"); }
+      catch (err) { setStatus(`Export SRT failed: ${err?.message || String(err)}`); }
+    });
+    subtitleCueListEl?.addEventListener("click", (ev) => {
+      const row = ev.target?.closest?.("[data-cue-index]");
+      if (!row || !currentSubtitleTrack) return;
+      const cue = currentSubtitleTrack.cues[Number(row.getAttribute("data-cue-index"))];
+      if (!cue) return;
+      playheadSec = cue.startMs / 1000;
+      selectShownFrameForPlayhead(playheadSec, { decodeVideo: true });
+      scheduleDrawNleTimeline();
+    });
+    subtitleCueListEl?.addEventListener("input", () => {
+      refreshSubtitleExports();
+    });
 
     clearBtn.addEventListener("click", () => {
       result = null;
       resultMap = null;
+      timingAnalytics = null;
       currentFileBytes = null;
       currentSourceMeta = null;
       currentDownloadName = "";
@@ -4017,6 +4443,7 @@
       clearPlaybackCanvas();
       playheadSec = null;
       resetMotionRoiState();
+      resetSubtitleState();
       clearSeiEditor();
       clearObjectDetection("No detections.");
       applyVideoPreviewShellSizing();
