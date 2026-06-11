@@ -48,10 +48,13 @@ export class WhisperProvider {
         if (!(pcm instanceof Float32Array) || pcm.length === 0) throw new Error("ASR PCM input is empty.");
         const asr = await this.load(options);
         const startedAt = performance.now();
+        const chunkLengthSec = Math.max(1, Number.isFinite(Number(options.chunkLengthSec)) ? Number(options.chunkLengthSec) : 30);
+        const requestedStrideSec = Number.isFinite(Number(options.strideLengthSec)) ? Number(options.strideLengthSec) : 5;
+        const strideLengthSec = Math.max(0, Math.min(requestedStrideSec, Math.max(0, chunkLengthSec - 0.25)));
         const result = await asr(pcm, {
             return_timestamps: true,
-            chunk_length_s: Math.max(5, Number(options.chunkLengthSec) || 30),
-            stride_length_s: Math.max(0, Number(options.strideLengthSec) || 5),
+            chunk_length_s: chunkLengthSec,
+            stride_length_s: strideLengthSec,
             language: normalizeLanguage(options.language),
             task: options.task || "transcribe",
         });

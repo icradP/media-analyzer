@@ -111,6 +111,7 @@
       overflow: auto;
     }
     .decoded-frame-container {
+      position: relative;
       width: 100%;
       height: 100%;
       min-height: 360px;
@@ -123,6 +124,28 @@
       overflow: hidden;
       aspect-ratio: 16 / 9;
       contain: layout paint size;
+    }
+    .video-subtitle-overlay {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 8%;
+      z-index: 2;
+      padding: 0 14px;
+      text-align: center;
+      pointer-events: none;
+      color: #fff;
+      font-size: clamp(13px, 2vw, 20px);
+      line-height: 1.4;
+      font-weight: 600;
+      text-shadow:
+        0 0 4px rgba(0, 0, 0, 0.95),
+        0 1px 3px rgba(0, 0, 0, 0.9),
+        0 2px 8px rgba(0, 0, 0, 0.75);
+      word-break: break-word;
+    }
+    .video-subtitle-overlay[hidden] {
+      display: none !important;
     }
     .decoded-frame-canvas {
       display: block;
@@ -283,7 +306,7 @@
     }
     .frame-virtual-spacer {
       position: relative;
-      min-width: 1240px;
+      min-width: 1340px;
     }
     .frame-table-meta {
       padding: 7px 10px;
@@ -293,11 +316,11 @@
     }
     .frame-table-row {
       display: grid;
-      grid-template-columns: 64px 70px 110px 68px 72px 88px 88px 124px 82px 92px minmax(180px, 1fr);
+      grid-template-columns: 64px 70px 110px 68px 72px 88px 88px 124px 82px 92px minmax(180px, 1fr) 100px;
       gap: 8px;
       align-items: center;
       height: 28px;
-      min-width: 1240px;
+      min-width: 1340px;
       box-sizing: border-box;
       padding: 0 10px;
       border-bottom: 1px solid #1f2a3d;
@@ -344,6 +367,52 @@
     .frame-picture.p { color: #9dc7ff; border-color: #326aa5; background: rgba(77, 163, 255, 0.16); }
     .frame-picture.b { color: #ffc48a; border-color: #9a6130; background: rgba(255, 159, 67, 0.16); }
     .frame-picture.config { color: #e8d0ff; border-color: #6d55aa; background: rgba(129, 93, 255, 0.16); }
+    .sps-mismatch-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-width: 34px;
+      max-width: 120px;
+      height: 18px;
+      padding: 0 6px;
+      border-radius: 4px;
+      border: 1px solid #c0392b;
+      color: #fff;
+      background: rgba(192, 57, 43, 0.7);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 18px;
+      white-space: nowrap;
+      cursor: help;
+    }
+    .frame-table-row.sps-mismatch-row { box-shadow: inset 3px 0 0 #e74c3c; }
+    .sps-mismatch-detail {
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid #c0392b;
+      border-radius: 8px;
+      background: rgba(192, 57, 43, 0.08);
+    }
+    .sps-mismatch-detail .title { color: #e74c3c; }
+    .sps-mismatch-table {
+      width: 100%;
+      font-size: 11px;
+      border-collapse: collapse;
+    }
+    .sps-mismatch-table th {
+      text-align: left;
+      color: var(--muted);
+      padding: 2px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sps-mismatch-table td {
+      padding: 2px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .sps-mismatch-table .val-match { color: #7ad17a; }
+    .sps-mismatch-table .val-diff { color: #ff7aa2; font-weight: 700; }
     .right-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -656,6 +725,40 @@
       word-break: break-word;
     }
     .subtitle-empty { padding: 8px; }
+    .subtitle-stream-box {
+      border: 1px solid rgba(122, 209, 122, 0.22);
+      border-radius: 6px;
+      background: rgba(122, 209, 122, 0.06);
+      padding: 8px;
+      min-width: 0;
+      flex: 1 1 220px;
+    }
+    .subtitle-stream-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .subtitle-stream-text {
+      color: var(--fg);
+      min-height: 22px;
+      word-break: break-word;
+    }
+    .subtitle-stream-text.partial {
+      color: #b8d8ff;
+      font-style: italic;
+    }
+    .subtitle-merge-decisions {
+      max-height: 120px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px;
+      background: rgba(255,255,255,0.03);
+    }
     @media (max-width: 1100px) {
       .right-grid { grid-template-columns: 1fr; }
       .monitor-layout {
@@ -672,9 +775,88 @@
         max-height: 620px;
       }
     }
+    .update-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .update-modal-overlay[hidden] { display: none !important; }
+    .update-modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      max-width: 520px;
+      width: min(90vw, 520px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      color: var(--text);
+    }
+    .update-modal h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      color: var(--accent);
+    }
+    .update-modal .update-version {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .update-modal ul {
+      margin: 0 0 16px;
+      padding-left: 20px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .update-modal ul li { margin-bottom: 2px; }
+    .update-modal .feature-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #0b0f17;
+      background: #5da8ff;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .update-modal .feature-tag.new { background: #7ad17a; }
+    .update-modal .feature-tag.fix { background: #ffd166; }
+    .update-modal .feature-tag.warn { background: #ff7aa2; }
+    .update-modal-close {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #1a2d45;
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .update-modal-close:hover { background: #243d5a; }
   </style>
 </head>
 <body>
+  <div id="updateModalOverlay" class="update-modal-overlay" hidden>
+    <div class="update-modal">
+      <h2>📦 更新信息</h2>
+      <div class="update-version">Frame Analysis Demo — 最近更新</div>
+      <ul>
+        <li><span class="feature-tag new">NEW</span>FLV 视频 SPS 校验：自动比对配置帧（Sequence Header）与后续 I 帧内联 SPS 信息的一致性</li>
+        <li><span class="feature-tag new">NEW</span>SPS 比对覆盖完整 VUI 参数：帧率（timing_info）、色彩空间（colour_description）、宽高比（aspect_ratio）、HRD、码流限制等</li>
+        <li><span class="feature-tag new">NEW</span>帧列表新增「SPS Check」列，不一致的帧显示红色 <span style="color:#e74c3c;font-weight:700">SPS异常</span> 标签</li>
+        <li><span class="feature-tag new">NEW</span>选中异常帧时，Selected Frame 面板展示逐字段比对详情（Config SPS vs I-Frame SPS）</li>
+        <li><span class="feature-tag warn">INFO</span>检测范围：profile/level/chroma/分辨率/frame_mbs_only/ref_frames/poc 等 21 项 SPS 字段 + 28 项 VUI 字段</li>
+      </ul>
+      <button id="updateModalClose" class="update-modal-close">知道了</button>
+    </div>
+  </div>
   <div class="wrap">
     <h1>Frame Analysis Example</h1>
     <div class="muted">逐帧分析 + HexDataView + 单帧音频播放 + 视频帧浏览器解码(canvas) + ONNX Runtime Web 目标识别。时间标尺与横向帧块合并为统一时间区并横向铺满主页面。</div>
@@ -720,6 +902,7 @@
             <h2 class="title">Decoded Frame</h2>
             <div id="videoPreviewShell" class="decoded-frame-container">
               <canvas id="videoCanvas" class="decoded-frame-canvas"></canvas>
+              <div id="videoSubtitleOverlay" class="video-subtitle-overlay" hidden></div>
             </div>
           </section>
           <section class="selected-frame-panel">
@@ -757,6 +940,10 @@
               <div class="collapsible-panel-content">
                 <div class="detector-tools">
                   <button id="detectObjects" class="btn-primary">Detect Selected Frame</button>
+                  <label for="detectOnSegmentPlay" title="播放视频选区时自动 ONNX 识别（无 SEI 时）">
+                    <input id="detectOnSegmentPlay" type="checkbox" />
+                    选区播放自动识别
+                  </label>
                   <label for="detectorProvider">EP</label>
                   <select id="detectorProvider">
                     <option value="auto">auto</option>
@@ -892,6 +1079,53 @@
                     <input id="vadPaddingMs" type="number" min="0" max="2000" step="50" value="200" />
                   </div>
                   <div class="subtitle-row">
+                    <label for="showSubtitleOnMonitor" title="按播放头时间在节目监视器上叠加显示字幕">
+                      <input id="showSubtitleOnMonitor" type="checkbox" checked />
+                      监视器显示字幕
+                    </label>
+                    <label for="showAsrMergeDecisions" title="显示每个滑动窗口的 ASR 文本合并/去重决策">
+                      <input id="showAsrMergeDecisions" type="checkbox" />
+                      Show ASR merge decisions
+                    </label>
+                  </div>
+                  <div class="muted">Pseudo-streaming ASR: sliding-window Whisper, not native streaming. Accuracy and latency still depend on model size/device.</div>
+                  <div class="subtitle-row">
+                    <label for="streamWindowMs">window</label>
+                    <input id="streamWindowMs" type="number" min="3000" max="60000" step="1000" value="15000" />
+                    <label for="streamStepMs">step</label>
+                    <input id="streamStepMs" type="number" min="500" max="10000" step="500" value="1000" />
+                    <label for="streamOverlapMs">overlap</label>
+                    <input id="streamOverlapMs" type="number" min="0" max="30000" step="500" value="5000" />
+                    <label for="streamStableRepeats">stable repeats</label>
+                    <input id="streamStableRepeats" type="number" min="1" max="10" step="1" value="2" />
+                  </div>
+                  <div class="subtitle-row">
+                    <button id="startPseudoStreamingAsr" class="btn-primary">Start pseudo-streaming ASR</button>
+                    <button id="stopPseudoStreamingAsr" disabled>Stop</button>
+                    <span id="streamMeta" class="detector-meta">stream=-, latency=-, inference=-, realtime=-</span>
+                  </div>
+                  <div class="subtitle-row">
+                    <div class="subtitle-stream-box">
+                      <div class="subtitle-stream-label">stable subtitle</div>
+                      <div id="streamStableText" class="subtitle-stream-text">-</div>
+                    </div>
+                    <div class="subtitle-stream-box">
+                      <div class="subtitle-stream-label">partial subtitle</div>
+                      <div id="streamPartialText" class="subtitle-stream-text partial">-</div>
+                    </div>
+                  </div>
+                  <div class="subtitle-row">
+                    <div class="subtitle-stream-box">
+                      <div class="subtitle-stream-label">raw window transcript</div>
+                      <div id="streamRawText" class="subtitle-stream-text partial">-</div>
+                    </div>
+                    <div class="subtitle-stream-box">
+                      <div class="subtitle-stream-label">merged transcript</div>
+                      <div id="streamMergedText" class="subtitle-stream-text">-</div>
+                    </div>
+                  </div>
+                  <pre id="streamMergeDecisions" class="subtitle-merge-decisions" hidden>No merge decisions.</pre>
+                  <div class="subtitle-row">
                     <button id="generateSubtitle" class="btn-primary">Generate Subtitle</button>
                     <button id="cancelSubtitle" disabled>Cancel</button>
                     <button id="exportVtt" disabled>Export VTT</button>
@@ -917,9 +1151,9 @@
         </div>
         <div class="transport">
           <button id="playSegVideo" class="btn-primary">播放视频选区</button>
-          <label class="seg-field" for="detectOnSegmentPlay">
-            <input id="detectOnSegmentPlay" type="checkbox" />
-            自动识别
+          <label class="seg-field" for="playSegAvSync">
+            <input id="playSegAvSync" type="checkbox" checked />
+            音视频同步
           </label>
           <button id="playSegAudio" class="btn-primary">播放音频选区</button>
           <button id="stopSeg">停止</button>
@@ -946,7 +1180,7 @@
         <h2 class="title">帧列表明细</h2>
         <div id="framesScroll" class="frames-scroll">
           <div class="frame-table-row header">
-            <span>Addr#</span><span>Idx</span><span>Offset</span><span>Type</span><span>Pic</span><span>PTS</span><span>PTS(s)</span><span>PTS(HMS)</span><span>Size</span><span>Codec</span><span>Refs</span>
+            <span>Addr#</span><span>Idx</span><span>Offset</span><span>Type</span><span>Pic</span><span>PTS</span><span>PTS(s)</span><span>PTS(HMS)</span><span>Size</span><span>Codec</span><span>Refs</span><span>SPS Check</span>
           </div>
           <div id="framesSpacer" class="frame-virtual-spacer">
             <div id="framesBody" class="frame-list frame-timeline-body"></div>
@@ -1058,6 +1292,7 @@
     import { VideoSegmentPlayer } from "../lib/player/index.js";
     import {
       createAsrManager,
+      createWhisperPseudoStreamingAsr,
       writeWebVtt,
       writeSrt,
     } from "../src/asr/index.js";
@@ -1076,6 +1311,7 @@
     const setSegStartBtn = document.getElementById("setSegStart");
     const setSegEndBtn = document.getElementById("setSegEnd");
     const playSegVideoBtn = document.getElementById("playSegVideo");
+    const playSegAvSyncEl = document.getElementById("playSegAvSync");
     const detectOnSegmentPlayEl = document.getElementById("detectOnSegmentPlay");
     const playSegAudioBtn = document.getElementById("playSegAudio");
     const stopSegBtn = document.getElementById("stopSeg");
@@ -1145,6 +1381,19 @@
     const vadMinSpeechMsEl = document.getElementById("vadMinSpeechMs");
     const vadMinSilenceMsEl = document.getElementById("vadMinSilenceMs");
     const vadPaddingMsEl = document.getElementById("vadPaddingMs");
+    const streamWindowMsEl = document.getElementById("streamWindowMs");
+    const streamStepMsEl = document.getElementById("streamStepMs");
+    const streamOverlapMsEl = document.getElementById("streamOverlapMs");
+    const streamStableRepeatsEl = document.getElementById("streamStableRepeats");
+    const startPseudoStreamingAsrBtn = document.getElementById("startPseudoStreamingAsr");
+    const stopPseudoStreamingAsrBtn = document.getElementById("stopPseudoStreamingAsr");
+    const streamMetaEl = document.getElementById("streamMeta");
+    const streamStableTextEl = document.getElementById("streamStableText");
+    const streamPartialTextEl = document.getElementById("streamPartialText");
+    const streamRawTextEl = document.getElementById("streamRawText");
+    const streamMergedTextEl = document.getElementById("streamMergedText");
+    const streamMergeDecisionsEl = document.getElementById("streamMergeDecisions");
+    const showAsrMergeDecisionsEl = document.getElementById("showAsrMergeDecisions");
     const generateSubtitleBtn = document.getElementById("generateSubtitle");
     const cancelSubtitleBtn = document.getElementById("cancelSubtitle");
     const exportVttBtn = document.getElementById("exportVtt");
@@ -1158,6 +1407,8 @@
     const clearFailureBtn = document.getElementById("clearFailure");
     const canvasEl = document.getElementById("videoCanvas");
     const videoPreviewShellEl = document.getElementById("videoPreviewShell");
+    const videoSubtitleOverlayEl = document.getElementById("videoSubtitleOverlay");
+    const showSubtitleOnMonitorEl = document.getElementById("showSubtitleOnMonitor");
     const timelineCanvasEl = document.getElementById("timelineCanvas");
     const transportTimeEl = document.getElementById("transportTime");
     const markInBtn = document.getElementById("markIn");
@@ -1226,6 +1477,10 @@
     let currentVadSegments = [];
     let subtitleVttText = "";
     let subtitleSrtText = "";
+    let pseudoStreamingAsr = null;
+    let pseudoStreamingCaptureNode = null;
+    let pseudoStreamingPartialText = "";
+    let lastAsrMergeDecisions = [];
     let detectionScheduler = createDetectionScheduler({
       fullFrameInterval: 15,
       roiFrameInterval: 1,
@@ -1294,6 +1549,33 @@
       if (detectionSeiProgressEl) detectionSeiProgressEl.value = 0;
       if (detectionSeiProgressTextEl) detectionSeiProgressTextEl.textContent = "Idle.";
     }
+    function findSubtitleCueAtTime(timeSec) {
+      const tMs = Number(timeSec) * 1000;
+      if (!Number.isFinite(tMs)) return null;
+      return (currentSubtitleTrack?.cues || []).find((cue) => {
+        const start = Number(cue.startMs);
+        const end = Number(cue.endMs);
+        return Number.isFinite(start) && Number.isFinite(end) && tMs >= start && tMs < end;
+      }) || null;
+    }
+    function updateSubtitleOverlay(timeSec = playheadSec) {
+      if (!videoSubtitleOverlayEl) return;
+      const show = showSubtitleOnMonitorEl?.checked !== false;
+      if (!show) {
+        videoSubtitleOverlayEl.hidden = true;
+        videoSubtitleOverlayEl.textContent = "";
+        return;
+      }
+      const cue = findSubtitleCueAtTime(timeSec);
+      const text = String(cue?.text || pseudoStreamingPartialText || "").trim();
+      if (!text) {
+        videoSubtitleOverlayEl.hidden = true;
+        videoSubtitleOverlayEl.textContent = "";
+        return;
+      }
+      videoSubtitleOverlayEl.hidden = false;
+      videoSubtitleOverlayEl.textContent = text;
+    }
     function resetSubtitleState() {
       subtitleAbortController?.abort?.();
       subtitleAbortController = null;
@@ -1301,6 +1583,9 @@
       currentVadSegments = [];
       subtitleVttText = "";
       subtitleSrtText = "";
+      pseudoStreamingPartialText = "";
+      stopPseudoStreamingAsr({ stopPlayback: false });
+      updateSubtitleOverlay(null);
       if (subtitleProgressEl) subtitleProgressEl.value = 0;
       if (subtitleProgressTextEl) subtitleProgressTextEl.textContent = "Idle.";
       if (subtitleMetaEl) subtitleMetaEl.textContent = "model=-, speed=-, segment=-";
@@ -1310,6 +1595,16 @@
       if (cancelSubtitleBtn) cancelSubtitleBtn.disabled = true;
       if (exportVttBtn) exportVttBtn.disabled = true;
       if (exportSrtBtn) exportSrtBtn.disabled = true;
+      if (streamMetaEl) streamMetaEl.textContent = "stream=-, latency=-, inference=-, realtime=-";
+      if (streamStableTextEl) streamStableTextEl.textContent = "-";
+      if (streamPartialTextEl) streamPartialTextEl.textContent = "-";
+      if (streamRawTextEl) streamRawTextEl.textContent = "-";
+      if (streamMergedTextEl) streamMergedTextEl.textContent = "-";
+      if (streamMergeDecisionsEl) {
+        streamMergeDecisionsEl.textContent = "No merge decisions.";
+        streamMergeDecisionsEl.hidden = true;
+      }
+      lastAsrMergeDecisions = [];
       markTimelineTrackTimesDirty();
     }
     function setSubtitleBusy(isBusy) {
@@ -1317,6 +1612,7 @@
       if (cancelSubtitleBtn) cancelSubtitleBtn.disabled = !isBusy;
       if (exportVttBtn) exportVttBtn.disabled = isBusy || !subtitleVttText;
       if (exportSrtBtn) exportSrtBtn.disabled = isBusy || !subtitleSrtText;
+      if (startPseudoStreamingAsrBtn) startPseudoStreamingAsrBtn.disabled = isBusy || Boolean(pseudoStreamingAsr);
     }
     function readSubtitleSettings() {
       const preset = asrModelPresetEl?.value || "onnx-community/whisper-tiny";
@@ -1337,6 +1633,147 @@
           adaptiveNoiseFloor: true,
         },
       };
+    }
+    function readPseudoStreamingSettings() {
+      const subtitleSettings = readSubtitleSettings();
+      const windowMs = Math.max(3000, Math.min(60000, Number(streamWindowMsEl?.value) || 15000));
+      const stepMs = Math.max(500, Math.min(10000, Number(streamStepMsEl?.value) || 1000));
+      const overlapMs = Math.max(0, Math.min(windowMs - 1000, Number(streamOverlapMsEl?.value) || 5000));
+      return {
+        ...subtitleSettings,
+        streamingOptions: {
+          windowMs,
+          stepMs,
+          overlapMs,
+          maxLookbackMs: Math.max(30000, windowMs + overlapMs),
+          minStableRepeats: Math.max(1, Math.min(10, Number(streamStableRepeatsEl?.value) || 2)),
+          commitDelayMs: 2500,
+          overlapTimeToleranceMs: 250,
+          textSimilarityThreshold: 0.68,
+          maxMergeGapMs: 1200,
+          preferLongerText: true,
+          preferHigherConfidence: true,
+          language: subtitleSettings.language,
+          useVad: subtitleSettings.useVad,
+        },
+      };
+    }
+    function setPseudoStreamingBusy(isBusy) {
+      if (startPseudoStreamingAsrBtn) startPseudoStreamingAsrBtn.disabled = isBusy;
+      if (stopPseudoStreamingAsrBtn) stopPseudoStreamingAsrBtn.disabled = !isBusy;
+    }
+    function updatePseudoStreamingSubtitleTrack(track) {
+      currentSubtitleTrack = track;
+      subtitleVttText = writeWebVtt(currentSubtitleTrack, { note: "Generated locally with sliding-window pseudo-streaming ASR" });
+      subtitleSrtText = writeSrt(currentSubtitleTrack);
+      renderSubtitleCues(currentSubtitleTrack);
+      if (exportVttBtn) exportVttBtn.disabled = !subtitleVttText;
+      if (exportSrtBtn) exportSrtBtn.disabled = !subtitleSrtText;
+      markTimelineTrackTimesDirty();
+      scheduleDrawNleTimeline();
+    }
+    function renderPseudoStreamingTranscript(payload = {}) {
+      const stable = String(payload.stableText || "").trim();
+      const partial = String(payload.partialText || "").trim();
+      const stats = payload.stats || {};
+      pseudoStreamingPartialText = partial;
+      if (streamStableTextEl) streamStableTextEl.textContent = stable || "-";
+      if (streamPartialTextEl) streamPartialTextEl.textContent = partial || "-";
+      if (streamRawTextEl) streamRawTextEl.textContent = String(stats.rawText || "").trim() || "-";
+      if (streamMergedTextEl) streamMergedTextEl.textContent = String(stats.mergedText || stable || "").trim() || "-";
+      if (payload.track) updatePseudoStreamingSubtitleTrack(payload.track);
+      const latency = Number.isFinite(Number(stats.latencyMs)) ? `${Number(stats.latencyMs).toFixed(0)}ms` : "-";
+      const infer = Number.isFinite(Number(stats.inferenceMs)) ? `${Number(stats.inferenceMs).toFixed(0)}ms` : "-";
+      const rt = Number.isFinite(Number(stats.realtimeFactor)) ? `${Number(stats.realtimeFactor).toFixed(2)}x` : "-";
+      const skipped = Number(stats.skippedTicks) || 0;
+      const merged = Number(stats.mergedCount) || 0;
+      const deduped = Number(stats.dedupedCount) || 0;
+      const asrRange = Number.isFinite(Number(stats.asrInputStartMs)) && Number.isFinite(Number(stats.asrInputEndMs))
+        ? `${formatHms(Number(stats.asrInputStartMs) / 1000)}-${formatHms(Number(stats.asrInputEndMs) / 1000)}`
+        : "-";
+      const vadText = stats.skippedByVad ? ", VAD skip" : "";
+      if (streamMetaEl) streamMetaEl.textContent = `stream=sliding-window, asr=${asrRange}, latency=${latency}, inference=${infer}, realtime=${rt}, merged=${merged}, deduped=${deduped}, skipped=${skipped}${vadText}`;
+      renderAsrMergeDecisions(stats.mergeDecisions || []);
+      updateSubtitleOverlay(playheadSec);
+    }
+    function renderAsrMergeDecisions(decisions = []) {
+      if (!streamMergeDecisionsEl) return;
+      lastAsrMergeDecisions = Array.isArray(decisions) ? decisions : [];
+      const show = showAsrMergeDecisionsEl?.checked === true;
+      streamMergeDecisionsEl.hidden = !show;
+      if (!show) return;
+      if (!lastAsrMergeDecisions.length) {
+        streamMergeDecisionsEl.textContent = "No merge decisions.";
+        return;
+      }
+      streamMergeDecisionsEl.textContent = lastAsrMergeDecisions.map((d) => {
+        const sim = Number.isFinite(Number(d.similarity)) ? Number(d.similarity).toFixed(2) : "-";
+        const overlap = Number.isFinite(Number(d.overlapMs)) ? `${Math.round(Number(d.overlapMs))}ms` : "-";
+        return `${d.action} sim=${sim} overlap=${overlap} reason=${d.reason || "-"}\n  old: ${d.oldText || "-"}\n  new: ${d.newText || "-"}\n  out: ${d.mergedText || d.newText || "-"}`;
+      }).join("\n");
+    }
+    async function startPseudoStreamingAsr() {
+      if (!result) throw new Error("Analyze a media file first.");
+      const audioFrames = (allFrames || []).filter((f) => f._mediaType === "audio" && isPlayableTimelineFrame(f));
+      if (!audioFrames.length) throw new Error("No playable audio frames found.");
+      stopSegmentPlayback();
+      await stopPseudoStreamingAsr({ stopPlayback: false, flush: false });
+      const settings = readPseudoStreamingSettings();
+      asrManager ||= createAsrManager({ useWorker: true });
+      const token = segmentPlayToken;
+      const { startSec, endSec } = getSegmentBoundsSec();
+      const prepared = await prepareSegmentAudioPlayback({ token, startSec, endSec });
+      if (!prepared) throw new Error("No audio frames in selected segment.");
+      pseudoStreamingPartialText = "";
+      pseudoStreamingAsr = createWhisperPseudoStreamingAsr({
+        asrManager,
+        model: settings.model,
+        device: settings.device,
+        language: settings.language,
+        vadOptions: settings.vadOptions,
+        timelineStartMs: Math.max(0, startSec * 1000),
+        ...settings.streamingOptions,
+        onTranscript: renderPseudoStreamingTranscript,
+        onModelProgress: (progress) => {
+          if (streamMetaEl && progress?.status) streamMetaEl.textContent = `stream=model, ${progress.status}`;
+        },
+        onError: (err) => {
+          setStatus(`Pseudo-streaming ASR failed: ${err?.message || String(err)}`);
+          stopPseudoStreamingAsr({ stopPlayback: false }).catch(() => {});
+        },
+      });
+      pseudoStreamingCaptureNode = await pseudoStreamingAsr.createAudioWorkletNode(prepared.ctx);
+      setPseudoStreamingBusy(true);
+      if (streamStableTextEl) streamStableTextEl.textContent = "-";
+      if (streamPartialTextEl) streamPartialTextEl.textContent = "-";
+      if (streamRawTextEl) streamRawTextEl.textContent = "-";
+      if (streamMergedTextEl) streamMergedTextEl.textContent = "-";
+      renderAsrMergeDecisions([]);
+      if (streamMetaEl) streamMetaEl.textContent = "stream=starting, latency=-, inference=-, realtime=-";
+      beginSegmentAudioPlayback(prepared, token, {
+        clearCanvasOnEnd: true,
+        showWaveform: false,
+        captureNode: pseudoStreamingCaptureNode,
+        onEnded: () => stopPseudoStreamingAsr({ stopPlayback: false }).catch(() => {}),
+      });
+      pseudoStreamingAsr.start();
+      setStatus(`Pseudo-streaming ASR started for segment ${startSec.toFixed(3)}-${endSec.toFixed(3)}s.`);
+    }
+    async function stopPseudoStreamingAsr(options = {}) {
+      const { stopPlayback = true, flush = true } = options;
+      const instance = pseudoStreamingAsr;
+      pseudoStreamingAsr = null;
+      if (instance) await instance.stop({ flush });
+      try { pseudoStreamingCaptureNode?.disconnect?.(); } catch {}
+      pseudoStreamingCaptureNode = null;
+      pseudoStreamingPartialText = "";
+      setPseudoStreamingBusy(false);
+      updateSubtitleOverlay(playheadSec);
+      if (stopPlayback) stopSegmentPlayback();
+      if (streamMetaEl && instance) {
+        const cues = currentSubtitleTrack?.cues?.length || 0;
+        streamMetaEl.textContent = `stream=stopped, cues=${cues}, latency=-, inference=-, realtime=-`;
+      }
     }
     function renderSubtitleProgress({ stage = "idle", current = 0, total = 0, message = "", segment = null, speed = null, vad = null } = {}) {
       const pct = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
@@ -1437,6 +1874,7 @@
         if (vadMetaEl) vadMetaEl.textContent = `Energy VAD: speech=${currentVadSegments.length}, asrSegments=${out.stats.asrSegments}`;
         markTimelineTrackTimesDirty();
         scheduleDrawNleTimeline();
+        updateSubtitleOverlay(playheadSec);
         setStatus(`Subtitle generated: cues=${currentSubtitleTrack.cues.length}, speed=${out.stats.speed.toFixed(2)}x.`);
       } catch (err) {
         setSubtitleBusy(false);
@@ -1549,6 +1987,159 @@
         Number(fs?._aacPacketType_value) === 0 ||
         /audio\s*specific\s*config|decoder\s*config|specific\s+config/i.test(remark)
       );
+    }
+    const SPS_COMPARE_FIELDS = [
+      { key: "_profile_idc_value", label: "profile_idc" },
+      { key: "_level_idc_value", label: "level_idc" },
+      { key: "_chroma_format_idc_value", label: "chroma_format_idc" },
+      { key: "_bit_depth_luma_value", label: "bit_depth_luma" },
+      { key: "_bit_depth_chroma_value", label: "bit_depth_chroma" },
+      { key: "_pic_width_in_mbs_minus1_value", label: "pic_width_in_mbs_minus1" },
+      { key: "_pic_height_in_map_units_minus1_value", label: "pic_height_in_map_units_minus1" },
+      { key: "_actualWidth", label: "actualWidth" },
+      { key: "_actualHeight", label: "actualHeight" },
+      { key: "frame_mbs_only_flag", label: "frame_mbs_only_flag" },
+      { key: "max_num_ref_frames", label: "max_num_ref_frames" },
+      { key: "pic_order_cnt_type", label: "pic_order_cnt_type" },
+      { key: "log2_max_frame_num_minus4", label: "log2_max_frame_num_minus4" },
+      { key: "log2_max_pic_order_cnt_lsb_minus4", label: "log2_max_pic_order_cnt_lsb_minus4" },
+      { key: "direct_8x8_inference_flag", label: "direct_8x8_inference_flag" },
+      { key: "frame_cropping_flag", label: "frame_cropping_flag" },
+      { key: "frame_crop_left_offset", label: "frame_crop_left_offset" },
+      { key: "frame_crop_right_offset", label: "frame_crop_right_offset" },
+      { key: "frame_crop_top_offset", label: "frame_crop_top_offset" },
+      { key: "frame_crop_bottom_offset", label: "frame_crop_bottom_offset" },
+      { key: "vui_parameters_present_flag", label: "vui_parameters_present_flag" },
+    ];
+    const VUI_COMPARE_FIELDS = [
+      { key: "aspect_ratio_info_present_flag", label: "vui.aspect_ratio_info_present_flag" },
+      { key: "_aspect_ratio_idc_value", label: "vui.aspect_ratio_idc" },
+      { key: "sar_width", label: "vui.sar_width" },
+      { key: "sar_height", label: "vui.sar_height" },
+      { key: "overscan_info_present_flag", label: "vui.overscan_info_present_flag" },
+      { key: "video_signal_type_present_flag", label: "vui.video_signal_type_present_flag" },
+      { key: "chroma_loc_info_present_flag", label: "vui.chroma_loc_info_present_flag" },
+      { key: "timing_info_present_flag", label: "vui.timing_info_present_flag" },
+      { key: "nal_hrd_parameters_present_flag", label: "vui.nal_hrd_parameters_present_flag" },
+      { key: "vcl_hrd_parameters_present_flag", label: "vui.vcl_hrd_parameters_present_flag" },
+      { key: "pic_struct_present_flag", label: "vui.pic_struct_present_flag" },
+      { key: "bitstream_restriction_flag", label: "vui.bitstream_restriction_flag" },
+    ];
+    const VUI_NESTED_COMPARE = {
+      overscan_info: [
+        { key: "overscan_appropriate_flag", label: "vui.overscan_info.overscan_appropriate_flag" },
+      ],
+      video_signal_type: [
+        { key: "_video_format_value", label: "vui.video_signal_type.video_format" },
+        { key: "video_full_range_flag", label: "vui.video_signal_type.video_full_range_flag" },
+        { key: "colour_description_present_flag", label: "vui.video_signal_type.colour_description_present_flag" },
+      ],
+      "video_signal_type.colour_description": [
+        { key: "_colour_primaries_value", label: "vui.colour_primaries" },
+        { key: "_transfer_characteristics_value", label: "vui.transfer_characteristics" },
+        { key: "_matrix_coefficients_value", label: "vui.matrix_coefficients" },
+      ],
+      chroma_loc_info: [
+        { key: "chroma_sample_loc_type_top_field", label: "vui.chroma_loc_info.top_field" },
+        { key: "chroma_sample_loc_type_bottom_field", label: "vui.chroma_loc_info.bottom_field" },
+      ],
+      timing_info: [
+        { key: "num_units_in_tick", label: "vui.timing_info.num_units_in_tick" },
+        { key: "time_scale", label: "vui.timing_info.time_scale" },
+        { key: "fixed_frame_rate_flag", label: "vui.timing_info.fixed_frame_rate_flag" },
+      ],
+      bitstream_restriction: [
+        { key: "motion_vectors_over_pic_boundaries_flag", label: "vui.bitstream_restriction.motion_vectors_over_pic_boundaries_flag" },
+        { key: "max_bytes_per_pic_denom", label: "vui.bitstream_restriction.max_bytes_per_pic_denom" },
+        { key: "max_bits_per_mb_denom", label: "vui.bitstream_restriction.max_bits_per_mb_denom" },
+        { key: "log2_max_mv_length_horizontal", label: "vui.bitstream_restriction.log2_max_mv_length_horizontal" },
+        { key: "log2_max_mv_length_vertical", label: "vui.bitstream_restriction.log2_max_mv_length_vertical" },
+        { key: "max_num_reorder_frames", label: "vui.bitstream_restriction.max_num_reorder_frames" },
+        { key: "max_dec_frame_buffering", label: "vui.bitstream_restriction.max_dec_frame_buffering" },
+      ],
+    };
+    function compareSpsFields(configSps, inlineSps) {
+      if (!configSps || !inlineSps) return { match: true, mismatches: [] };
+      const mismatches = [];
+      for (const { key, label } of SPS_COMPARE_FIELDS) {
+        const cv = configSps[key];
+        const iv = inlineSps[key];
+        if (cv === undefined && iv === undefined) continue;
+        if (cv !== iv) {
+          mismatches.push({ field: label, configValue: cv ?? "(undefined)", inlineValue: iv ?? "(undefined)" });
+        }
+      }
+      const cVui = configSps.vui_parameters;
+      const iVui = inlineSps.vui_parameters;
+      const cVuiPresent = configSps.vui_parameters_present_flag;
+      const iVuiPresent = inlineSps.vui_parameters_present_flag;
+      if (cVuiPresent !== iVuiPresent) {
+        mismatches.push({ field: "vui_parameters_present_flag", configValue: cVuiPresent ?? "(undefined)", inlineValue: iVuiPresent ?? "(undefined)" });
+      }
+      if (cVui && iVui) {
+        for (const { key, label } of VUI_COMPARE_FIELDS) {
+          const cv = cVui[key];
+          const iv = iVui[key];
+          if (cv === undefined && iv === undefined) continue;
+          if (cv !== iv) {
+            mismatches.push({ field: label, configValue: cv ?? "(undefined)", inlineValue: iv ?? "(undefined)" });
+          }
+        }
+        for (const [path, fields] of Object.entries(VUI_NESTED_COMPARE)) {
+          const parts = path.split(".");
+          let cObj = cVui;
+          let iObj = iVui;
+          for (const p of parts) { cObj = cObj?.[p]; iObj = iObj?.[p]; }
+          for (const { key, label } of fields) {
+            const cv = cObj?.[key];
+            const iv = iObj?.[key];
+            if (cv === undefined && iv === undefined) continue;
+            if (cv !== iv) {
+              mismatches.push({ field: label, configValue: cv ?? "(undefined)", inlineValue: iv ?? "(undefined)" });
+            }
+          }
+        }
+      } else if ((cVuiPresent && !iVui) || (!cVui && iVuiPresent)) {
+        mismatches.push({ field: "vui_parameters (object)", configValue: cVui ? "present" : "absent", inlineValue: iVui ? "present" : "absent" });
+      }
+      return { match: mismatches.length === 0, mismatches };
+    }
+    function extractInlineSpsFromTag(tag) {
+      if (!tag) return null;
+      for (let k = 0; ; k++) {
+        const nalu = tag[`nalu[${k}]`];
+        if (!nalu) break;
+        if (Number(nalu._nal_unit_type_value) === 7) return nalu;
+      }
+      return null;
+    }
+    function scanSpsMismatches(frames) {
+      let lastConfigSps = null;
+      for (const frame of frames) {
+        const raw = frame._rawFrame || frame;
+        raw._spsMismatch = null;
+        if (frame._mediaType !== "video") continue;
+        const fs = raw.formatSpecific || raw.data || {};
+        const avcType = Number(fs._avcPacketType_value);
+        if (avcType === 0) {
+          const sh = fs.sequenceHeader || raw.sequenceHeader;
+          if (sh?.["sps[0]"]) lastConfigSps = sh["sps[0]"];
+          continue;
+        }
+        if (avcType !== 1 || !lastConfigSps) continue;
+        const inlineSps = extractInlineSpsFromTag(fs);
+        if (!inlineSps) continue;
+        const result = compareSpsFields(lastConfigSps, inlineSps);
+        if (!result.match) {
+          raw._spsMismatch = result;
+          raw.remark = raw.remark
+            ? `${raw.remark} [SPS MISMATCH]`
+            : "[SPS MISMATCH]";
+        }
+      }
+    }
+    function getSpsMismatchForFrame(frame) {
+      return frame?._spsMismatch || frame?._rawFrame?._spsMismatch || null;
     }
     function isPlayableTimelineFrame(frame) {
       const t = getFrameTimeSec(frame);
@@ -1868,6 +2459,13 @@
             })
             .join("")
         : `<div class="tree-line">-</div>`;
+      const spsMismatch = getSpsMismatchForFrame(frame);
+      const spsMismatchHtml = spsMismatch && !spsMismatch.match
+        ? `<details open>
+            <summary style="color:#e74c3c">⚠ SPS Mismatch (${spsMismatch.mismatches.length})</summary>
+            ${spsMismatch.mismatches.map(m => `<div class="tree-line"><span class="tree-key">${esc(m.field)}</span><span style="color:#7ad17a">${esc(String(m.configValue))}</span> → <span style="color:#ff7aa2;font-weight:700">${esc(String(m.inlineValue))}</span></div>`).join("")}
+          </details>`
+        : "";
       selectedTreeEl.innerHTML = `
         <details open>
           <summary>Time</summary>
@@ -1886,6 +2484,7 @@
           <summary>FLV Tag</summary>
           ${flvRows}
         </details>
+        ${spsMismatchHtml}
         <details open>
           <summary>TS PES</summary>
           ${tsPesRows}
@@ -1935,8 +2534,27 @@
         rows.push(["naluCount", nalus.length || 0]);
         rows.push(["seiCount", seiNalus.length || 0]);
         rows.push(["seiPayloadTypes", payloadTypeSet.size ? Array.from(payloadTypeSet).sort((a, b) => a - b).join(",") : "-"]);
+        const sm = getSpsMismatchForFrame(frame);
+        if (sm && !sm.match) {
+          rows.push(["spsMismatch", `${sm.mismatches.length} fields differ`]);
+        }
       }
-      selectedInfoEl.innerHTML = rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join("");
+      const smInfo = getSpsMismatchForFrame(frame);
+      let html = rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join("");
+      if (smInfo && !smInfo.match) {
+        html += `<div class="sps-mismatch-detail" style="grid-column:1/-1">
+          <h3 class="title" style="margin:0 0 6px;font-size:13px">⚠ SPS Mismatch Detected</h3>
+          <table class="sps-mismatch-table">
+            <tr><th>Field</th><th>Config SPS</th><th>I-Frame SPS</th></tr>
+            ${smInfo.mismatches.map(m => `<tr>
+              <td>${esc(m.field)}</td>
+              <td class="val-diff">${esc(String(m.configValue))}</td>
+              <td class="val-diff">${esc(String(m.inlineValue))}</td>
+            </tr>`).join("")}
+          </table>
+        </div>`;
+      }
+      selectedInfoEl.innerHTML = html;
     }
     function renderHex(frame) {
       const prevSignature = currentHexRenderSignature;
@@ -3074,6 +3692,7 @@
       }
     }
     function syncTransportLabels() {
+      updateSubtitleOverlay(playheadSec);
       if (!transportTimeEl) return;
       const ph = typeof playheadSec === "number" && Number.isFinite(playheadSec)
         ? formatHms(playheadSec)
@@ -3406,6 +4025,7 @@
     }
 
     function stopSegmentPlayback() {
+      if (pseudoStreamingAsr) stopPseudoStreamingAsr({ stopPlayback: false }).catch(() => {});
       segmentPlayToken += 1;
       closeAutoDetectJob(segmentAutoDetectPending);
       segmentAutoDetectPending = null;
@@ -3791,11 +4411,17 @@
       const rows = shownFrames.slice(start, end).map((f, offset) => {
         const i = start + offset;
         const info = frameListInfoForFrame(f);
+        const sm = getSpsMismatchForFrame(f);
+        const hasSpsMismatch = sm && !sm.match;
+        const spsMismatchTitle = hasSpsMismatch
+          ? `SPS mismatch: ${sm.mismatches.map(m => m.field).join(", ")}`
+          : "";
         const klass = [
           "frame-table-row",
           i === selectedIndex ? "selected" : "",
           Number(f.index) === Number(playingFrameIndex) ? "playing" : "",
           decodeExceptionFrameIndexes.has(Number(f.index)) ? "decode-error" : "",
+          hasSpsMismatch ? "sps-mismatch-row" : "",
         ].filter(Boolean).join(" ");
         return `
           <div class="${klass}" data-idx="${i}">
@@ -3810,6 +4436,7 @@
             <span>${esc(f._size ?? "-")}</span>
             <span class="mono-clip">${esc(f._codecFormat ?? "-")}</span>
             <span class="mono-clip" title="${esc(info.refs.title)}">${esc(info.refs.text)}</span>
+            <span>${hasSpsMismatch ? `<span class="sps-mismatch-badge" title="${esc(spsMismatchTitle)}">SPS异常</span>` : ""}</span>
           </div>
         `;
       }).join("");
@@ -4004,6 +4631,26 @@
       const { startSec, endSec } = getSegmentBoundsSec();
       const allTargetVideoFrames = getFramesBySegment("video", startSec, endSec);
       if (!allTargetVideoFrames.length) throw new Error("No video frames in selected segment.");
+      const syncAv = playSegAvSyncEl?.checked === true;
+      const firstVideoPts = getFrameTimeSec(allTargetVideoFrames[0]) ?? startSec;
+      let audioPrepared = null;
+      if (syncAv) {
+        try {
+          setStatus(`Segment A/V play: preparing audio, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}] ...`);
+          audioPrepared = await prepareSegmentAudioPlayback({
+            token,
+            startSec,
+            endSec,
+            alignToVideoPtsSec: firstVideoPts,
+          });
+        } catch (err) {
+          console.warn("segment-av-sync-audio", err);
+          setStatus(`音视频同步: 音频失败，仅播放视频 (${err?.message || String(err)})`);
+        }
+      }
+      if (audioPrepared && token === segmentPlayToken) {
+        beginSegmentAudioPlayback(audioPrepared, token, { clearCanvasOnEnd: false, showWaveform: false });
+      }
       const vStream = (result?.streams || []).find((s) => s.codecType === "video");
       activeVideoSegmentPlayer = new VideoSegmentPlayer({
         mediaInfo: resultMap,
@@ -4058,45 +4705,74 @@
       playingFrameIndex = null;
       renderFrames();
       scheduleDrawNleTimeline();
+      setStatus(audioPrepared ? "Segment A/V play done." : "Segment video play done.");
     }
-    async function playAudioSegmentByPts() {
-      stopSegmentPlayback();
-      const token = segmentPlayToken;
-      const { startSec, endSec } = getSegmentBoundsSec();
+    async function prepareSegmentAudioPlayback({ token, startSec, endSec, alignToVideoPtsSec = null }) {
       const targetAudioFrames = getFramesBySegment("audio", startSec, endSec);
-      if (!targetAudioFrames.length) throw new Error("No audio frames in selected segment.");
+      if (!targetAudioFrames.length) return null;
       const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
       if (!Ctx) throw new Error("WebAudio API is not available in this browser.");
       const ctx = currentAudioCtx || new Ctx();
       currentAudioCtx = ctx;
       if (ctx.state === "suspended") await ctx.resume();
-      setStatus(`Segment audio play: frames=${targetAudioFrames.length}, pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}]`);
       const rawFrames = targetAudioFrames.map((f) => f?._rawFrame).filter(Boolean);
       const decodedOut = await decodeAudioFramesToBufferWithWebAudio({
         frames: rawFrames,
         mediaInfo: resultMap,
         audioContext: ctx,
       });
+      if (token !== segmentPlayToken) return null;
       currentAudioCtx = decodedOut.ctx;
-      const decoded = decodedOut.buffer;
-      if (token !== segmentPlayToken) return;
+      const firstAudioPts = getFrameTimeSec(targetAudioFrames[0]) ?? startSec;
+      const alignPts = Number.isFinite(Number(alignToVideoPtsSec)) ? Number(alignToVideoPtsSec) : null;
+      const audioDelaySec = alignPts != null ? Math.max(0, alignPts - firstAudioPts) : 0;
+      return {
+        ctx: decodedOut.ctx,
+        buffer: decodedOut.buffer,
+        targetAudioFrames,
+        segmentPtsStart: startSec,
+        audioDelaySec,
+        firstAudioPts,
+      };
+    }
+    function beginSegmentAudioPlayback(prepared, token, { clearCanvasOnEnd = true, showWaveform = true, captureNode = null, onEnded = null } = {}) {
+      if (!prepared || token !== segmentPlayToken) return;
+      const { ctx, buffer, targetAudioFrames, segmentPtsStart, audioDelaySec } = prepared;
       const src = ctx.createBufferSource();
       const analyser = ctx.createAnalyser();
-      src.buffer = decoded;
-      src.connect(analyser);
-      analyser.connect(ctx.destination);
-      const segmentPtsStart = getFrameTimeSec(targetAudioFrames[0]) || startSec;
+      src.buffer = buffer;
+      if (captureNode) {
+        src.connect(captureNode);
+        const captureSink = ctx.createGain();
+        captureSink.gain.value = 0;
+        captureNode.connect(captureSink);
+        captureSink.connect(ctx.destination);
+        if (showWaveform) {
+          src.connect(analyser);
+          analyser.connect(ctx.destination);
+        } else {
+          src.connect(ctx.destination);
+        }
+      } else if (showWaveform) {
+        src.connect(analyser);
+        analyser.connect(ctx.destination);
+      } else {
+        src.connect(ctx.destination);
+      }
       const startWhen = Math.max(ctx.currentTime + 0.01, ctx.currentTime + 0.05);
-      startAudioWaveformRender(analyser);
-      src.start(startWhen);
+      const playWhen = startWhen + Math.max(0, Number(audioDelaySec) || 0);
+      if (showWaveform) startAudioWaveformRender(analyser);
+      src.start(playWhen);
       activeSegmentAudioSources.push(src);
-      startAudioSegmentProgressTracking({
-        token,
-        ctx,
-        startWhen,
-        segmentPtsStart,
-        targetAudioFrames,
-      });
+      if (showWaveform || captureNode) {
+        startAudioSegmentProgressTracking({
+          token,
+          ctx,
+          startWhen: playWhen,
+          segmentPtsStart,
+          targetAudioFrames,
+        });
+      }
       src.onended = () => {
         if (token !== segmentPlayToken) return;
         if (activeSegmentAudioProgressTimer) {
@@ -4107,12 +4783,23 @@
           cancelAnimationFrame(activeAudioWaveformAnimId);
           activeAudioWaveformAnimId = 0;
         }
-        clearPlaybackCanvas();
+        if (clearCanvasOnEnd) clearPlaybackCanvas();
         playingFrameIndex = null;
         renderFrames();
-        setStatus("Segment audio play done.");
+        setStatus(clearCanvasOnEnd ? "Segment audio play done." : "Segment audio finished (video may still be playing).");
+        onEnded?.();
       };
-      setStatus(`Segment audio playing (${decoded.duration.toFixed(3)}s) with progress tracking.`);
+      const delayNote = audioDelaySec > 0.001 ? `, audio delay=${audioDelaySec.toFixed(3)}s` : "";
+      setStatus(`Segment audio playing (${buffer.duration.toFixed(3)}s, frames=${targetAudioFrames.length}${delayNote}).`);
+    }
+    async function playAudioSegmentByPts() {
+      stopSegmentPlayback();
+      const token = segmentPlayToken;
+      const { startSec, endSec } = getSegmentBoundsSec();
+      setStatus(`Segment audio play: pts=[${startSec.toFixed(3)}, ${endSec.toFixed(3)}] ...`);
+      const prepared = await prepareSegmentAudioPlayback({ token, startSec, endSec });
+      if (!prepared) throw new Error("No audio frames in selected segment.");
+      beginSegmentAudioPlayback(prepared, token, { clearCanvasOnEnd: true });
     }
 
     async function applyAnalyzeResult(bytes, fileMeta) {
@@ -4146,6 +4833,7 @@
         segEndEl.value = "";
         playheadSec = null;
       }
+      scanSpsMismatches(allFrames);
       rebuildList({
         preserveSelection: false,
         resetScroll: true,
@@ -4448,8 +5136,12 @@
       });
     });
     playSegAudioBtn.addEventListener("click", () => {
-      playAudioSegmentByPts().catch((err) => {
-        setStatus(`Segment audio play failed: ${err?.message || String(err)}`);
+      const run = playSegAvSyncEl?.checked === true ? playVideoSegmentByPts : playAudioSegmentByPts;
+      run().catch((err) => {
+        setStatus(`Segment play failed: ${err?.message || String(err)}`);
+        if (run === playVideoSegmentByPts) {
+          setFailureSnapshotFromError(err, { context: "playSegAudio button (av-sync)" });
+        }
       });
     });
     stopSegBtn.addEventListener("click", () => {
@@ -4524,6 +5216,17 @@
     cancelSubtitleBtn?.addEventListener("click", () => {
       subtitleAbortController?.abort?.();
     });
+    startPseudoStreamingAsrBtn?.addEventListener("click", () => {
+      startPseudoStreamingAsr().catch((err) => {
+        setPseudoStreamingBusy(false);
+        setStatus(`Pseudo-streaming ASR failed: ${err?.message || String(err)}`);
+      });
+    });
+    stopPseudoStreamingAsrBtn?.addEventListener("click", () => {
+      stopPseudoStreamingAsr({ stopPlayback: true }).catch((err) => {
+        setStatus(`Stop pseudo-streaming ASR failed: ${err?.message || String(err)}`);
+      });
+    });
     exportVttBtn?.addEventListener("click", () => {
       try { exportSubtitleText("vtt"); }
       catch (err) { setStatus(`Export VTT failed: ${err?.message || String(err)}`); }
@@ -4543,6 +5246,13 @@
     });
     subtitleCueListEl?.addEventListener("input", () => {
       refreshSubtitleExports();
+      updateSubtitleOverlay(playheadSec);
+    });
+    showSubtitleOnMonitorEl?.addEventListener("change", () => {
+      updateSubtitleOverlay(playheadSec);
+    });
+    showAsrMergeDecisionsEl?.addEventListener("change", () => {
+      renderAsrMergeDecisions(lastAsrMergeDecisions);
     });
 
     clearBtn.addEventListener("click", () => {
@@ -4598,6 +5308,26 @@
     bindFrameVirtualList();
     scheduleDrawNleTimeline();
     renderMediaOverview();
+    {
+      const UPDATE_KEY = "frame-analysis-demo-update-v2";
+      const overlay = document.getElementById("updateModalOverlay");
+      const closeBtn = document.getElementById("updateModalClose");
+      if (overlay && closeBtn) {
+        if (!localStorage.getItem(UPDATE_KEY)) {
+          overlay.hidden = false;
+        }
+        closeBtn.addEventListener("click", () => {
+          overlay.hidden = true;
+          localStorage.setItem(UPDATE_KEY, "1");
+        });
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) {
+            overlay.hidden = true;
+            localStorage.setItem(UPDATE_KEY, "1");
+          }
+        });
+      }
+    }
   </script>
 </body>
 </html>

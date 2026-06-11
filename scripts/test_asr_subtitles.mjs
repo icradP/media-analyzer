@@ -4,7 +4,20 @@ import { segmentsToSubtitleTrack, mergeSubtitleTracks } from "../src/asr/subtitl
 import { writeWebVtt } from "../src/asr/vttWriter.js";
 import { writeSrt } from "../src/asr/srtWriter.js";
 import { detectEnergyVad, slicePcmByVadSegment } from "../src/asr/energyVad.js";
-import { createEnergyVadProvider, normalizeVadBackend } from "../src/asr/index.js";
+import {
+  PcmRingBuffer,
+  TranscriptStabilizer,
+  TranscriptMerger,
+  createEnergyVadProvider,
+  collapseRepeatedTranscript,
+  mergeAsrWindowResults,
+  mergeOverlappingText,
+  normalizeTranscript,
+  normalizeVadBackend,
+  normalizeWhisperStreamingOptions,
+  selectVadSpeechClip,
+  textSimilarity,
+} from "../src/asr/index.js";
 
 const input = new Float32Array([0, 1, 0, -1]);
 const resampled = resampleFloat32(input, 4, 2);
@@ -56,6 +69,139 @@ const providerVad = await provider.detect(vadPcm, {
 });
 assert.equal(providerVad.backend, "energy");
 assert.equal(providerVad.segments.length, 1);
+
+const ring = new PcmRingBuffer({ sampleRate: 10, maxDurationMs: 1000, timelineStartMs: 2000 });
+ring.push(new Float32Array([1, 2, 3, 4, 5]));
+ring.push(new Float32Array([6, 7, 8, 9, 10, 11]));
+const recent = ring.snapshotRecent(500);
+assert.deepEqual(Array.from(recent.pcm), [7, 8, 9, 10, 11]);
+assert.equal(Math.round(recent.startMs), 2600);
+assert.equal(Math.round(recent.endMs), 3100);
+
+const stabilizer = new TranscriptStabilizer({ minStableRepeats: 2 });
+assert.equal(stabilizer.update("hello world").committed, false);
+assert.equal(stabilizer.update("hello world again").committed, false);
+const stableEnglish = stabilizer.update("hello world again");
+assert.equal(stableEnglish.committedText, "hello world");
+assert.equal(stableEnglish.stableText, "hello world");
+assert.equal(stabilizer.update("hello world again soon").partialText, "again soon");
+
+const zh = new TranscriptStabilizer({ minStableRepeats: 2 });
+zh.update("你好世界");
+zh.update("你好世界今天");
+const stableZh = zh.update("你好世界今天");
+assert.equal(stableZh.committedText, "你好世界");
+
+const streamingOptions = normalizeWhisperStreamingOptions({ windowMs: 15000, stepMs: 1000, overlapMs: 5000, minStableRepeats: 2 });
+assert.equal(streamingOptions.windowMs, 15000);
+assert.equal(streamingOptions.stepMs, 1000);
+assert.equal(streamingOptions.overlapMs, 5000);
+assert.equal(streamingOptions.maxLookbackMs, 30000);
+
+assert.equal(normalizeTranscript("嗯 大家好，欢迎来到！", "zh"), "大家好欢迎来到");
+assert.ok(textSimilarity("你好今天我们测试", "你好今天我们测试", "zh") > 0.99);
+assert.equal(mergeOverlappingText("大家好欢迎来到", "欢迎来到今天的节目", "zh"), "大家好欢迎来到今天的节目");
+assert.equal(mergeOverlappingText("hello everyone welcome to", "welcome to today's show", "en"), "hello everyone welcome to today's show");
+assert.equal(collapseRepeatedTranscript("请专心驾驶请专心驾驶请专心驾驶", "zh"), "请专心驾驶");
+assert.equal(collapseRepeatedTranscript("please drive safely please drive safely please drive safely", "en"), "please drive safely");
+
+const clipSource = new Float32Array(16000 * 10);
+for (let i = 16000 * 7; i < 16000 * 8; i++) clipSource[i] = 0.2;
+const speechClip = selectVadSpeechClip({
+  pcm: clipSource,
+  sampleRate: 16000,
+  startMs: 5000,
+  endMs: 15000,
+  durationMs: 10000,
+}, {
+  segments: [
+    { startMs: 1000, endMs: 1800, score: 0.8 },
+    { startMs: 7000, endMs: 8000, score: 0.9 },
+  ],
+}, { maxMergeGapMs: 300 });
+assert.equal(Math.round(speechClip.startMs), 12000);
+assert.equal(Math.round(speechClip.endMs), 13000);
+assert.equal(Math.round(speechClip.durationMs), 1000);
+
+const mergeOptions = {
+  language: "auto",
+  overlapTimeToleranceMs: 250,
+  textSimilarityThreshold: 0.68,
+  maxMergeGapMs: 1200,
+  preferLongerText: true,
+  preferHigherConfidence: true,
+  commitDelayMs: 0,
+};
+let mergedSegments = [];
+let mergeOut = mergeAsrWindowResults(mergedSegments, {
+  windowId: "zh-1",
+  windowStartMs: 0,
+  windowEndMs: 10000,
+  text: "大家好欢迎来到",
+}, mergeOptions);
+mergedSegments = mergeOut.segments;
+mergeOut = mergeAsrWindowResults(mergedSegments, {
+  windowId: "zh-2",
+  windowStartMs: 5000,
+  windowEndMs: 15000,
+  text: "欢迎来到今天的节目",
+}, mergeOptions);
+assert.equal(mergeOut.segments.length, 1);
+assert.equal(mergeOut.segments[0].text, "大家好欢迎来到今天的节目");
+
+mergedSegments = [];
+mergeOut = mergeAsrWindowResults(mergedSegments, {
+  windowId: "dup-1",
+  windowStartMs: 0,
+  windowEndMs: 10000,
+  text: "你好今天我们测试",
+}, mergeOptions);
+mergeOut = mergeAsrWindowResults(mergeOut.segments, {
+  windowId: "dup-2",
+  windowStartMs: 5000,
+  windowEndMs: 15000,
+  text: "你好今天我们测试",
+}, mergeOptions);
+assert.equal(mergeOut.segments.length, 1);
+assert.equal(mergeOut.segments[0].text, "你好今天我们测试");
+assert.equal(mergeOut.dedupedCount, 1);
+
+mergedSegments = [];
+mergeOut = mergeAsrWindowResults(mergedSegments, {
+  windowId: "en-1",
+  windowStartMs: 0,
+  windowEndMs: 10000,
+  text: "hello welcome to",
+}, mergeOptions);
+mergeOut = mergeAsrWindowResults(mergeOut.segments, {
+  windowId: "en-2",
+  windowStartMs: 5000,
+  windowEndMs: 15000,
+  text: "welcome to this demo",
+}, mergeOptions);
+assert.equal(mergeOut.segments.length, 1);
+assert.equal(mergeOut.segments[0].text, "hello welcome to this demo");
+
+const merger = new TranscriptMerger({ ...mergeOptions, commitDelayMs: 3000 });
+merger.mergeWindowResult({ windowId: "a", windowStartMs: 0, windowEndMs: 10000, text: "first line" });
+const delayed = merger.mergeWindowResult({ windowId: "b", windowStartMs: 12000, windowEndMs: 20000, text: "second line" });
+assert.equal(delayed.segments.length, 2);
+assert.equal(delayed.stableSegments.length, 1);
+assert.equal(delayed.unstablePartialSegments.length, 1);
+
+mergeOut = mergeAsrWindowResults([], {
+  windowId: "keep-1",
+  windowStartMs: 0,
+  windowEndMs: 4000,
+  text: "alpha",
+}, mergeOptions);
+mergeOut = mergeAsrWindowResults(mergeOut.segments, {
+  windowId: "keep-2",
+  windowStartMs: 8000,
+  windowEndMs: 12000,
+  text: "beta",
+}, mergeOptions);
+assert.equal(mergeOut.segments.length, 2);
 
 const trackA = segmentsToSubtitleTrack([
   { startMs: 0, endMs: 1200, text: " hello   world " },
